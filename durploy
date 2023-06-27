@@ -1,0 +1,273 @@
+#!/bin/sh
+
+# TODO: Add support for multiple ships to be synchronize targets for desk
+# in a single command.
+# TODO: Add support for desk sync to select an option for when the
+# `|nuke`/`|revive` workflow is triggered (e.g. always, app/mar-only, never)
+# TODO: Add support for backups for ships (e.g. boot up ship and immediately
+# stash the ship in a backups dir for later deployment.)
+# > ~/.local/share/durploy/backups/[ship]-[version]
+# > ~/.local/share/durploy/backups/zod-2.9
+# TODO: Handle cases when 'urbit' is not installed on the host system
+# (allow users to download the latest binary for their system, managed
+# by the local config in e.g. ~/.local/share/durploy/binaries)
+# TODO: Handle top-level cases for different Urbit binary versions
+# TODO: Enable optional interactivity for destructive operations (e.g. the
+# dest dir already exists; want to clear it out? etc.)
+# TODO: Add support for different binary versions and builds (hash of the
+# version information?)
+# > ~/.local/share/durploy/versions/urbit-2.9
+# TODO: Make starting a tmux session associated with a ship optional
+# TODO: Improve cliarg parsing by allowing for '--' delimiters between
+# flag args and positional args for each command
+
+## Constants & Helper Functions ##
+
+DURPLOY_VERSION="0.0.1"
+DURPLOY_HELP_FOOTER="
+Report bugs to: ~sidnym-ladrut
+durploy home page: <https://github.com/sidnym-ladrut/durploy/>"
+DURPLOY_HELP_BASE="usage: durploy [-v | --version] [-h | --help] <command> [<args>]
+d(e)ploy ur(bit) ships and desks
+
+Command options:
+  ship: Generate and run Urbit ships
+  desk: Deploy desk files to running Urbit ships
+
+Flag arguments:
+  -v, --version: Show the software version
+  -h, --help: Show this help message
+$DURPLOY_HELP_FOOTER"
+DURPLOY_HELP_SHIP="usage: durploy ship <ship> <ship-path>
+Generate and run Urbit ships
+
+Positional arguments:
+  ship: The name of the Urbit ship to create and/or run (e.g. zod)
+  ship-path: The file path for the ship's pier (e.g. /path/to/zod)
+$DURPLOY_HELP_FOOTER"
+DURPLOY_HELP_DESK="usage: durploy desk <desk> <desk-path> <ship-path>...
+Deploy desk files to running Urbit ships
+
+Positional arguments:
+  desk: The name of the desk to deploy (e.g. my-desk)
+  desk-path: The file path for the desk's source files (e.g. /path/to/my-desk)
+  ship-path: The file path for the ship's pier (e.g. /path/to/zod)
+
+Flag arguments:
+  -w, --watch: Monitor <desk-path> for changes and deploy continuously
+$DURPLOY_HELP_FOOTER"
+
+_durploy__info() { echo "$1" && exit 1; }
+_durploy__error() { echo "[ERROR]: $1" && exit 1; }
+
+_durploy__invalid_pargs_exact() { [ "$(($1+1))" != "$#" ]; }
+_durploy__invalid_pargs_atleast() { [ "$(($1+1))" -gt "$#" ]; }
+
+_durploy__invalid_ship() {
+	echo "(scan \"$1\" fed:ag)" | urbit eval 2>&1 | grep -q "bail: %exit"
+}
+_durploy__invalid_desk() {
+	echo "(scan \"$1\" sym)" | urbit eval 2>&1 | grep -q "bail: %exit"
+}
+
+_durploy__desk_install() {
+	_durploy_install_desk=$1
+	_durploy_install_from="$(readlink -f "$2")"
+	_durploy_install_to="$(readlink -f "$3")"
+
+	tmux send-keys C-m "|new-desk %$_durploy_install_desk" C-m "y" C-m
+	tmux send-keys C-m "|mount %$_durploy_install_desk" C-m
+	# FIXME: Change this to `inotifywait` on Linux and `fswatch` on Mac
+	while [ ! -d "$_durploy_install_to" ]; do sleep 1; done
+
+	rsync -rcuL "$_durploy_install_from/" "$_durploy_install_to/"
+
+	tmux send-keys C-m "|commit %$_durploy_install_desk" C-m
+	tmux send-keys C-m "|install our %$_durploy_install_desk" C-m
+}
+
+_durploy__desk_sync() {
+	_durploy_sync_desk=$1
+	_durploy_sync_from="$(readlink -f "$2")"
+	_durploy_sync_to="$(readlink -f "$3")"
+
+	_durploy_sync_files=$(rsync -in -rcuL "$_durploy_sync_from/" "$_durploy_sync_to/" \
+		| awk '{if ($0 == "") exit; else print $2;}'
+	)
+	# TODO: Consider just grabbing the names of all apps from the source location
+	# and then only nuking if there's a relevant update (e.g. to sur or app).
+	_durploy_sync_apps=$(echo "$_durploy_sync_files" \
+		| grep -E '^app/.+' \
+		| sed -re 's?.*/([^/]+).hoon$?\1?g'
+	)
+
+	if [ -n "$_durploy_sync_files" ]; then
+		rsync -rcuL "$_durploy_sync_from/" "$_durploy_sync_to/"
+		for _durploy_sync_app in $_durploy_sync_apps; do
+			tmux send-keys C-m "|nuke %$_durploy_sync_app" C-m "y" C-m
+		done
+		tmux send-keys C-m "|commit %$_durploy_sync_desk" C-m
+		for _durploy_sync_app in $_durploy_sync_apps; do
+			tmux send-keys C-m "|revive %$_durploy_sync_app" C-m
+		done
+	fi
+}
+
+## Sub-Commands ##
+
+durploy__ship() {
+	while : ; do case $1 in
+		-h | --help) printf "%s\\n" "$DURPLOY_HELP_SHIP" && exit 1 ;;
+		-*) printf "invalid option: %s\\n" "$1" && exit 1 ;;
+		*) break ;;
+	esac done
+	_durploy__invalid_pargs_exact 2 "$@" && _durploy__info "$DURPLOY_HELP_SHIP"
+
+	durploy_ship_name=$1; shift
+	durploy_ship_path=$1
+
+	_durploy__invalid_ship "$durploy_ship_name" \
+		&& _durploy__error "invalid ship name '$durploy_ship_name'"
+	if [ ! -e "$durploy_ship_path" ]; then
+		mkdir -p "$(dirname "$durploy_ship_path")" \
+			|| _durploy__error "couldn't create directory at path '$durploy_ship_path'"
+	# elif the path isn't a dir, then exit
+	elif [ ! -d "$durploy_ship_path" ]; then
+		_durploy__error "invalid artifact exists at path '$durploy_ship_path'"
+	# elif the path isn't the pier for the right ship, then exit
+	elif [ "$(basename "$durploy_ship_path")" != "$durploy_ship_name" ]; then
+		# TODO: Use a more reliable method for determining the owner of the
+		# pier than just the directory name
+		_durploy__error "bad pier for ship '$durploy_ship_name' exists at path '$durploy_ship_path'"
+	fi
+
+	durploy_ship_sesh="urbit-$durploy_ship_name"
+	durploy_ship_tmuxcmd="tmux attach -t $durploy_ship_sesh"
+
+	# if an urbit is already running for this pier, tell the user about
+	# the running tmux session (or, if the urbit is running outside the
+	# expected tmux session, emit an error)
+	if pgrep -f "urbit serf $(readlink -f "$durploy_ship_path")" | grep -q -v "grep"; then
+		if tmux has-session -t "$durploy_ship_sesh" 2>/dev/null; then
+			# FIXME: Should be '_durploy_info" or similar, but using a helper is tricky
+			# when the output needs to include newlines
+			echo "urbit is already running in tmux session; start with:"
+			echo "$durploy_ship_tmuxcmd"
+			return 0
+		else
+			_durploy__error "urbit running out of tmux session; terminate it to continue"
+		fi
+	# if an urbit isn't running, we check the pier for validity and initialize
+	# it if need be, then we create a tmux session (or start the urbit in the
+	# existing session)
+	else
+		# if the pier doesn't exist yet, try to create it
+		if [ ! -e "$durploy_ship_path" ]; then
+			if ! urbit -t -x -L -c "$durploy_ship_path" -F "$durploy_ship_name"; then
+				_durploy__error "couldn't create ship '$durploy_ship_name' at '$durploy_ship_path'"
+			fi
+		# else, attempt to boot the urbit and immediately exit
+		else
+			if ! urbit -t -x -L "$durploy_ship_path"; then
+				_durploy__error "couldn't revive ship '$durploy_ship_name' at '$durploy_ship_path'"
+			fi
+		fi
+
+		if ! tmux has-session -t "$durploy_ship_sesh" 2>/dev/null; then
+			tmux set-option -g history-limit 1000000 \; new-session -d -s "$durploy_ship_sesh"
+		fi
+
+		tmux select-window -t "$durploy_ship_sesh:0"
+		tmux send-keys "urbit -L $durploy_ship_path" C-m
+		echo "tmux session started; start with:"
+		echo "$durploy_ship_tmuxcmd"
+	fi
+}
+
+durploy__desk() {
+	while : ; do case $1 in
+		-h | --help) printf "%s\\n" "$DURPLOY_HELP_DESK" && exit 1 ;;
+		-w | --watch) durploy_desk_iswatching="true" && shift 1 ;;
+		-*) printf "invalid option: %s\\n" "$1" && exit 1 ;;
+		*) break ;;
+	esac done
+	_durploy__invalid_pargs_atleast 3 "$@" && _durploy__info "$DURPLOY_HELP_DESK"
+
+	durploy_desk_name=$1; shift
+	durploy_desk_codepath=$1; shift
+	durploy_desk_shippath=$1 # For array support: $(printf '%s ' "$@")
+	durploy_desk_shipcodepath="$durploy_desk_shippath/$durploy_desk_name"
+	[ -z "$durploy_desk_iswatching" ] && durploy_desk_iswatching="false"
+
+	_durploy__invalid_desk "$durploy_desk_name" \
+		&& _durploy__error "invalid desk name '$durploy_desk_name'"
+	# FIXME: || ! find "$durploy_desk_codepath" -maxdepth 0 -empty | read -r _
+	[ ! -d "$durploy_desk_codepath" ] \
+		&& _durploy__error "invalid urbit code desk at '$durploy_desk_codepath'"
+	# FIXME: Actually check that the directory is a valid Urbit ship
+	[ ! -d "$durploy_desk_shippath" ] \
+		&& _durploy__error "invalid urbit ship at '$durploy_desk_shippath'"
+
+	durploy_ship_name=$(basename "$(readlink -f "$durploy_desk_shippath")")
+	durploy_ship_sesh="urbit-$durploy_ship_name"
+
+	# urbit must be running in the proper tmux session to run a desk deployment
+	if ! pgrep -f "urbit serf $(readlink -f "$durploy_desk_shippath")" | grep -q -v "grep" \
+			|| ! tmux has-session -t "$durploy_ship_sesh" 2>/dev/null; then
+		# FIXME: Should be '_durploy_error" or similar, but using a helper is tricky
+		# when the output needs to include newlines
+		echo "need to initialize/run target ship before deploying desk; please run:"
+		echo "$0 ship $durploy_ship_name $durploy_desk_shippath"
+		exit 1
+	fi
+
+	# TODO: Handle the case when the tmux window is in a weird mode (e.g. history search);
+	# think I can just hit enter a bunch before starting
+	tmux select-window -t "$durploy_ship_sesh:0"
+
+	if [ ! -d "$durploy_desk_shipcodepath" ]; then
+		_durploy__desk_install "$durploy_desk_name" \
+			"$durploy_desk_codepath" "$durploy_desk_shipcodepath"
+	fi
+
+	if [ "$durploy_desk_iswatching" = "false" ]; then
+		_durploy__desk_sync "$durploy_desk_name" \
+			"$durploy_desk_codepath" "$durploy_desk_shipcodepath"
+	else
+		while : ; do
+			_durploy__desk_sync "$durploy_desk_name" \
+				"$durploy_desk_codepath" "$durploy_desk_shipcodepath"
+			sleep 2
+		done
+	fi
+}
+
+## Main Command ##
+
+durploy() {
+	while : ; do case $1 in
+		-h | --help) printf "%s\\n" "$DURPLOY_HELP_BASE" && exit 1 ;;
+		-v | --version) printf "%s\\n" "$DURPLOY_VERSION" && exit 1 ;;
+		-*) printf "invalid option: %s\\n" "$1" && exit 1 ;;
+		*) break ;;
+	esac done
+	_durploy__invalid_pargs_atleast 1 "$@" && _durploy__info "$DURPLOY_HELP_BASE"
+
+	durploy_command_name=$1; shift
+
+	if type "durploy__$durploy_command_name" >/dev/null 2>&1; then
+		"durploy__$durploy_command_name" "$@"
+	else
+		_durploy__error "invalid command name '$durploy_command_name'"
+	fi
+}
+
+# if the functions above are sourced into an interactive interpreter, the user can
+# just call "yum download" or "yum maintenance" with no further code needed.
+
+# if invoked as a script rather than sourced, call function named on argv via the below;
+# note that this must be the first operation other than a function definition
+# for $_ to successfully distinguish between sourcing and invocation:
+# [ ! "$_" -eq "$0" ] && return
+
+durploy "$@"
