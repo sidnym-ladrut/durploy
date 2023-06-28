@@ -30,7 +30,7 @@ instructions on installing via these managers will be filled in here.
 ### Create/Run a Development Ship ###
 
 ```bash
-durploy ship zod /path/to/zod
+durploy ship /path/to/zod
 ```
 
 ### Synchronize a Desk to a Running Ship ###
@@ -61,6 +61,9 @@ This section will be written once `durploy` supports configuration files.
   [~timluc-miptev](https://urbit.org/ids/~timluc-miptev) (with [a more featureful
   version](https://github.com/johnhyde/turf/blob/main/bin/install.sh) by
   [~midlev-mindyr](https://urbit.org/ids/~midlev-mindyr))
+- [`copy.sh`](https://github.com/Fang-/suite/blob/master/pkg/copy.sh): An
+  Urbit desk and dependencies synchronization script written in Bash by
+  [~palfun-foslup](https://urbit.org/ids/~palfun-foslup)
 
 ## Dependencies ##
 
@@ -82,6 +85,7 @@ This list is ordered roughly in descending order of expected availability:
 - [`sed`](https://www.man7.org/linux/man-pages/man1/sed.1p.html)
 - [`grep`](https://www.man7.org/linux/man-pages/man1/grep.1p.html)
 - [`printf`](https://www.man7.org/linux/man-pages/man1/printf.1p.html)
+- [`cp`](https://www.man7.org/linux/man-pages/man1/cp.1p.html)
 - [`basename`](https://www.man7.org/linux/man-pages/man1/basename.1p.html)
 - [`dirname`](https://www.man7.org/linux/man-pages/man1/dirname.1p.html)
 - [`sleep`](https://www.man7.org/linux/man-pages/man1/sleep.1p.html)
