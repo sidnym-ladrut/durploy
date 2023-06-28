@@ -1,13 +1,11 @@
 #!/bin/sh
 
-# TODO: Add support for multiple ships to be synchronize targets for desk
-# in a single command.
-# TODO: Add support for desk sync to select an option for when the
-# `|nuke`/`|revive` workflow is triggered (e.g. always, app/mar-only, never)
 # TODO: Add support for backups for ships (e.g. boot up ship and immediately
 # stash the ship in a backups dir for later deployment.)
 # > ~/.local/share/durploy/backups/[ship]-[version]
 # > ~/.local/share/durploy/backups/zod-2.9
+# TODO: Add support for multiple ships to be synchronize targets for desk
+# in a single command.
 # TODO: Handle cases when 'urbit' is not installed on the host system
 # (allow users to download the latest binary for their system, managed
 # by the local config in e.g. ~/.local/share/durploy/binaries)
@@ -55,7 +53,18 @@ Positional arguments:
 
 Flag arguments:
   -w, --watch: Monitor <desk-path> for changes and deploy continuously
+  -r, --reset-strategy: Strategy for resetting apps on a desk; one of:
+    always: reset apps every time a file is changed
+    appsur: only reset apps when their particular app/sur file changes
+    sur: only reset apps when their particular sur file changes
+    never (default): never reset apps; only move files and '|commit'
 $DURPLOY_HELP_FOOTER"
+DURPLOY_RESET_STRATS="always appsur sur never"
+# shellcheck disable=SC2059,SC2086
+DURPLOY_RESET_STRATS_REGEX=$(printf "(%s)|" $DURPLOY_RESET_STRATS \
+	| sed 's/|$//' \
+	| xargs printf "^(%s)$"
+)
 
 _durploy__info() { echo "$1" && exit 1; }
 _durploy__error() { echo "[ERROR]: $1" && exit 1; }
@@ -90,26 +99,56 @@ _durploy__desk_sync() {
 	_durploy_sync_desk=$1
 	_durploy_sync_from="$(readlink -f "$2")"
 	_durploy_sync_to="$(readlink -f "$3")"
+	_durploy_sync_rstrat=$4
 
 	_durploy_sync_files=$(rsync -in -rcuL "$_durploy_sync_from/" "$_durploy_sync_to/" \
 		| awk '{if ($0 == "") exit; else print $2;}'
 	)
-	# TODO: Consider just grabbing the names of all apps from the source location
-	# and then only nuking if there's a relevant update (e.g. to sur or app).
+	_durploy_sync_srcapps=$(find "$_durploy_sync_from/app" -type f -name "*.hoon" \
+		| sed -re 's?.*/([^/]+).hoon$?\1?g'
+	)
 	_durploy_sync_apps=$(echo "$_durploy_sync_files" \
 		| grep -E '^app/.+' \
+		| sed -re 's?.*/([^/]+).hoon$?\1?g'
+	)
+	_durploy_sync_surs=$(echo "$_durploy_sync_files" \
+		| grep -E '^sur/.+' \
 		| sed -re 's?.*/([^/]+).hoon$?\1?g'
 	)
 
 	if [ -n "$_durploy_sync_files" ]; then
 		rsync -rcuL "$_durploy_sync_from/" "$_durploy_sync_to/"
-		for _durploy_sync_app in $_durploy_sync_apps; do
-			tmux send-keys C-m "|nuke %$_durploy_sync_app" C-m "y" C-m
+
+		# FIXME: This could use some refactoring...
+		_durploy_sync_prekeys="C-m"
+		_durploy_sync_poskeys="C-m"
+		for _durploy_sync_app in $_durploy_sync_srcapps; do
+			_durploy_sync_doreload="false"
+			case $_durploy_sync_rstrat in
+				always) _durploy_sync_doreload="true" ;;
+				appsur) echo "$_durploy_sync_apps $_durploy_sync_surs" \
+					| grep -F -wq "$_durploy_sync_app" \
+					&& _durploy_sync_doreload="true" ;;
+				sur) echo "$_durploy_sync_surs" \
+					| grep -F -wq "$_durploy_sync_app" \
+					&& _durploy_sync_doreload="true" ;;
+				never) _durploy_sync_doreload="false" ;;
+			esac
+			if [ "$_durploy_sync_doreload" = "true" ]; then
+				_durploy_sync_prekeys=$(printf "%s\n" \
+					"C-m" "|nuke %%$_durploy_sync_app" "C-m" "y" "C-m"
+				)
+				_durploy_sync_poskeys=$(printf "%s\n" \
+					"C-m" "|revive %%$_durploy_sync_app" "C-m"
+				)
+			fi
 		done
-		tmux send-keys C-m "|commit %$_durploy_sync_desk" C-m
-		for _durploy_sync_app in $_durploy_sync_apps; do
-			tmux send-keys C-m "|revive %$_durploy_sync_app" C-m
-		done
+
+		# shellcheck disable=SC2059
+		printf "$_durploy_sync_prekeys" | xargs -d'\n' tmux send-keys
+		tmux send-keys "C-m" "|commit %$_durploy_sync_desk" "C-m"
+		# shellcheck disable=SC2059
+		printf "$_durploy_sync_poskeys" | xargs -d'\n' tmux send-keys
 	fi
 }
 
@@ -188,6 +227,7 @@ durploy__desk() {
 	while : ; do case $1 in
 		-h | --help) printf "%s\\n" "$DURPLOY_HELP_DESK" && exit 1 ;;
 		-w | --watch) durploy_desk_iswatching="true" && shift 1 ;;
+		-r | --reset-strategy) durploy_desk_resetstrat=$2 && shift 2 ;;
 		-*) printf "invalid option: %s\\n" "$1" && exit 1 ;;
 		*) break ;;
 	esac done
@@ -198,6 +238,7 @@ durploy__desk() {
 	durploy_desk_shippath=$1 # For array support: $(printf '%s ' "$@")
 	durploy_desk_shipcodepath="$durploy_desk_shippath/$durploy_desk_name"
 	[ -z "$durploy_desk_iswatching" ] && durploy_desk_iswatching="false"
+	[ -z "$durploy_desk_resetstrat" ] && durploy_desk_resetstrat="never"
 
 	_durploy__invalid_desk "$durploy_desk_name" \
 		&& _durploy__error "invalid desk name '$durploy_desk_name'"
@@ -207,6 +248,8 @@ durploy__desk() {
 	# FIXME: Actually check that the directory is a valid Urbit ship
 	[ ! -d "$durploy_desk_shippath" ] \
 		&& _durploy__error "invalid urbit ship at '$durploy_desk_shippath'"
+	! echo "$durploy_desk_resetstrat" | grep -q -E "$DURPLOY_RESET_STRATS_REGEX" \
+		&& _durploy__error "invalid reset strategy '$durploy_desk_resetstrat'; try one of '$DURPLOY_RESET_STRATS'"
 
 	durploy_ship_name=$(basename "$(readlink -f "$durploy_desk_shippath")")
 	durploy_ship_sesh="urbit-$durploy_ship_name"
@@ -226,20 +269,21 @@ durploy__desk() {
 	tmux select-window -t "$durploy_ship_sesh:0"
 
 	if [ ! -d "$durploy_desk_shipcodepath" ]; then
-		_durploy__desk_install "$durploy_desk_name" \
-			"$durploy_desk_codepath" "$durploy_desk_shipcodepath"
+		_durploy__desk_install \
+			"$durploy_desk_name" \
+			"$durploy_desk_codepath" \
+			"$durploy_desk_shipcodepath"
 	fi
 
-	if [ "$durploy_desk_iswatching" = "false" ]; then
-		_durploy__desk_sync "$durploy_desk_name" \
-			"$durploy_desk_codepath" "$durploy_desk_shipcodepath"
-	else
-		while : ; do
-			_durploy__desk_sync "$durploy_desk_name" \
-				"$durploy_desk_codepath" "$durploy_desk_shipcodepath"
-			sleep 2
-		done
-	fi
+	while : ; do
+		_durploy__desk_sync \
+			"$durploy_desk_name" \
+			"$durploy_desk_codepath" \
+			"$durploy_desk_shipcodepath" \
+			"$durploy_desk_resetstrat"
+		[ "$durploy_desk_iswatching" = "false" ] && break
+		sleep 2
+	done
 }
 
 ## Main Command ##

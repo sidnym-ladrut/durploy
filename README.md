@@ -75,6 +75,8 @@ This list is ordered roughly in descending order of expected availability:
 - [`rsync`](https://www.man7.org/linux/man-pages/man1/rsync.1.html)
 - [`pgrep`](https://www.man7.org/linux/man-pages/man1/pgrep.1.html)
 - [`readlink`](https://www.man7.org/linux/man-pages/man1/readlink.1.html)
+- [`find`](https://www.man7.org/linux/man-pages/man1/find.1p.html)
+- [`xargs`](https://www.man7.org/linux/man-pages/man1/xargs.1p.html)
 - [`mkdir`](https://www.man7.org/linux/man-pages/man1/mkdir.1p.html)
 - [`awk`](https://www.man7.org/linux/man-pages/man1/awk.1p.html)
 - [`sed`](https://www.man7.org/linux/man-pages/man1/sed.1p.html)
