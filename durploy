@@ -16,6 +16,8 @@
 # allow for %lens commands to be passed to ships
 # TODO: Improve cliarg parsing by allowing for '--' delimiters between
 # flag args and positional args for each command
+# TODO: Handle the case when the tmux window is in a weird mode (e.g. history
+# search); think this can be solved by hitting enter a bunch before starting
 
 ## Constants & Helper Functions ##
 
@@ -96,27 +98,44 @@ _durploy__check_desk_path() {
 	fi
 }
 
+_durploy__send_cmds() {
+	_durploy_sendkeys_sesh=$1; shift
+
+	_durploy_sendkeys_cmds="C-m"
+	for _durploy_sendkeys_cmd in "$@"; do
+		_durploy_sendkeys_cmds=$(printf "%s\n%s\nC-m" \
+			"$_durploy_sendkeys_cmds" "$_durploy_sendkeys_cmd"
+		)
+	done
+
+	# echo "$_durploy_sendkeys_cmds" | xargs -d '\n' printf "%s\n"
+	echo "$_durploy_sendkeys_cmds" | xargs -d '\n' \
+		tmux send-keys -t "$_durploy_sendkeys_sesh:0"
+}
+
 _durploy__desk_install() {
 	_durploy_install_desk=$1
-	_durploy_install_from="$(readlink -f "$2")"
-	_durploy_install_to="$(readlink -f "$3")"
+	_durploy_install_sesh=$2
+	_durploy_install_from="$(readlink -f "$3")"
+	_durploy_install_to="$(readlink -f "$4")"
 
-	tmux send-keys C-m "|new-desk %$_durploy_install_desk" C-m "y" C-m
-	tmux send-keys C-m "|mount %$_durploy_install_desk" C-m
+	_durploy__send_cmds "$_durploy_install_sesh" "|new-desk %$_durploy_install_desk" "y"
+	_durploy__send_cmds "$_durploy_install_sesh" "|mount %$_durploy_install_desk"
 	# FIXME: Change this to `inotifywait` on Linux and `fswatch` on Mac
 	while [ ! -d "$_durploy_install_to" ]; do sleep 1; done
 
 	rsync -rcuL "$_durploy_install_from/" "$_durploy_install_to/"
 
-	tmux send-keys C-m "|commit %$_durploy_install_desk" C-m
-	tmux send-keys C-m "|install our %$_durploy_install_desk" C-m
+	_durploy__send_cmds "$_durploy_install_sesh" "|commit %$_durploy_install_desk"
+	_durploy__send_cmds "$_durploy_install_sesh" "|install our %$_durploy_install_desk"
 }
 
 _durploy__desk_sync() {
 	_durploy_sync_desk=$1
-	_durploy_sync_from="$(readlink -f "$2")"
-	_durploy_sync_to="$(readlink -f "$3")"
-	_durploy_sync_rstrat=$4
+	_durploy_sync_sesh=$2
+	_durploy_sync_from="$(readlink -f "$3")"
+	_durploy_sync_to="$(readlink -f "$4")"
+	_durploy_sync_rstrat=$5
 
 	_durploy_sync_files=$(rsync -in -rcuL "$_durploy_sync_from/" "$_durploy_sync_to/" \
 		| awk '{if ($0 == "") exit; else print $2;}'
@@ -136,9 +155,7 @@ _durploy__desk_sync() {
 	if [ -n "$_durploy_sync_files" ]; then
 		rsync -rcuL "$_durploy_sync_from/" "$_durploy_sync_to/"
 
-		# FIXME: This could use some refactoring...
-		_durploy_sync_prekeys="C-m"
-		_durploy_sync_poskeys="C-m"
+		_durploy_sync_reloadapps=""
 		for _durploy_sync_app in $_durploy_sync_srcapps; do
 			_durploy_sync_doreload="false"
 			case $_durploy_sync_rstrat in
@@ -152,20 +169,17 @@ _durploy__desk_sync() {
 				never) _durploy_sync_doreload="false" ;;
 			esac
 			if [ "$_durploy_sync_doreload" = "true" ]; then
-				_durploy_sync_prekeys=$(printf "%s\n" \
-					"C-m" "|nuke %%$_durploy_sync_app" "C-m" "y" "C-m"
-				)
-				_durploy_sync_poskeys=$(printf "%s\n" \
-					"C-m" "|revive %%$_durploy_sync_app" "C-m"
-				)
+				_durploy_sync_reloadapps="$_durploy_sync_reloadapps $_durploy_sync_app"
 			fi
 		done
 
-		# shellcheck disable=SC2059
-		printf "$_durploy_sync_prekeys" | xargs -d'\n' tmux send-keys
-		tmux send-keys "C-m" "|commit %$_durploy_sync_desk" "C-m"
-		# shellcheck disable=SC2059
-		printf "$_durploy_sync_poskeys" | xargs -d'\n' tmux send-keys
+		for _durploy_sync_reloadapp in $_durploy_sync_reloadapps; do
+			_durploy__send_cmds "$_durploy_sync_sesh" "|nuke %$_durploy_sync_reloadapp" "y"
+		done
+		_durploy__send_cmds "$_durploy_sync_sesh" "|commit %$_durploy_sync_desk"
+		for _durploy_sync_reloadapp in $_durploy_sync_reloadapps; do
+			_durploy__send_cmds "$_durploy_sync_sesh" "|revive %$_durploy_sync_reloadapp"
+		done
 	fi
 }
 
@@ -238,8 +252,7 @@ durploy__ship() {
 			tmux set-option -g history-limit 1000000 \; new-session -d -s "$durploy_ship_sesh"
 		fi
 
-		tmux select-window -t "$durploy_ship_sesh:0"
-		tmux send-keys "urbit -L $durploy_ship_path" C-m
+		_durploy__send_cmds "$durploy_ship_sesh" "urbit -L $durploy_ship_path"
 		echo "tmux session started; start with:"
 		echo "$durploy_ship_tmuxcmd"
 	fi
@@ -257,7 +270,7 @@ durploy__desk() {
 
 	durploy_desk_name=$1; shift
 	durploy_desk_codepath=$1; shift
-	durploy_desk_shippath=$1 # For array support: $(printf '%s ' "$@")
+	durploy_desk_shippath=$1; shift # For array support: $(printf '%s ' "$@")
 	durploy_desk_shipcodepath="$durploy_desk_shippath/$durploy_desk_name"
 	[ -z "$durploy_desk_iswatching" ] && durploy_desk_iswatching="false"
 	[ -z "$durploy_desk_resetstrat" ] && durploy_desk_resetstrat="never"
@@ -286,13 +299,10 @@ durploy__desk() {
 		exit 1
 	fi
 
-	# TODO: Handle the case when the tmux window is in a weird mode (e.g. history search);
-	# think I can just hit enter a bunch before starting
-	tmux select-window -t "$durploy_ship_sesh:0"
-
 	if [ ! -d "$durploy_desk_shipcodepath" ]; then
 		_durploy__desk_install \
 			"$durploy_desk_name" \
+			"$durploy_ship_sesh" \
 			"$durploy_desk_codepath" \
 			"$durploy_desk_shipcodepath"
 	fi
@@ -300,6 +310,7 @@ durploy__desk() {
 	while : ; do
 		_durploy__desk_sync \
 			"$durploy_desk_name" \
+			"$durploy_ship_sesh" \
 			"$durploy_desk_codepath" \
 			"$durploy_desk_shipcodepath" \
 			"$durploy_desk_resetstrat"
