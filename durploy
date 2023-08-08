@@ -21,7 +21,7 @@
 
 ## Constants & Helper Functions ##
 
-DURPLOY_VERSION="0.0.2"
+DURPLOY_VERSION="0.0.4"
 DURPLOY_HELP_FOOTER="
 Report bugs to: ~sidnym-ladrut
 durploy home page: <https://github.com/sidnym-ladrut/durploy/>"
@@ -140,7 +140,8 @@ _durploy__desk_sync() {
 	_durploy_sync_files=$(rsync -in -rcuL "$_durploy_sync_from/" "$_durploy_sync_to/" \
 		| awk '{if ($0 == "") exit; else print $2;}'
 	)
-	_durploy_sync_srcapps=$(find "$_durploy_sync_from/app" -type f -name "*.hoon" \
+	# TODO: Read the content of `desk.bill`?
+	_durploy_sync_srcapps=$(find -L "$_durploy_sync_from/app" -type f -name "*.hoon" \
 		| sed -re 's?.*/([^/]+).hoon$?\1?g'
 	)
 	_durploy_sync_apps=$(echo "$_durploy_sync_files" \
