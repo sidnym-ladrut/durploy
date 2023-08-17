@@ -1,16 +1,16 @@
 # `durploy`: D(e)ploy Ur(bit) #
 
-`durploy` is a POSIX shell utility for deploying and managing Urbit ships and
-desks. More specifically, it's wrapper script for all the common Urbit
-workflows found on the [Urbit website], particularly those enumerated in [Urbit
-"Environment Setup"] and [Urbit "Software Distribution"].
+`durploy` is a Bash utility for deploying and managing Urbit ships and desks.
+More specifically, it's wrapper script for all the common Urbit workflows found
+on the [Urbit website], particularly those enumerated in [Urbit "Environment
+Setup"] and [Urbit "Software Distribution"].
 
 ## Installation ##
 
-`durploy` is written in POSIX shell and thus should run on most \*NIX
-platforms. Presently, it has only been tested on Arch Linux; your mileage may
-vary! Please review the ["Dependencies"](#dependencies) section below if you
-encounter any issues with missing commands.
+`durploy` is written in Bash and thus should run on most \*NIX platforms.
+Presently, it has only been tested on Linux; your mileage may vary! Please
+review the ["Dependencies"](#dependencies) section below if you encounter any
+issues with missing commands.
 
 ### Quick and Easy ###
 
@@ -73,9 +73,9 @@ should be readily available to install on most modern \*NIX systems.
 
 This list is ordered roughly in descending order of expected availability:
 
-- [`tmux`](https://github.com/tmux/tmux/wiki) (will be optional in future
-  versions)
+- [`bash`](https://www.man7.org/linux/man-pages/man1/bash.1.html)
 - [`rsync`](https://www.man7.org/linux/man-pages/man1/rsync.1.html)
+- [`curl`](https://www.man7.org/linux/man-pages/man1/curl.1.html)
 - [`pgrep`](https://www.man7.org/linux/man-pages/man1/pgrep.1.html)
 - [`readlink`](https://www.man7.org/linux/man-pages/man1/readlink.1.html)
 - [`find`](https://www.man7.org/linux/man-pages/man1/find.1p.html)

@@ -12,19 +12,15 @@
 # version information?)
 # > ~/.local/share/durploy/versions/urbit-2.9
 # > ~/.local/share/durploy/backups/zod-2.9
-# TODO: Make starting a tmux session associated with a ship optional;
-# allow for %lens commands to be passed to ships
 # TODO: Improve cliarg parsing by allowing for '--' delimiters between
 # flag args and positional args for each command
-# TODO: Handle the case when the tmux window is in a weird mode (e.g. history
-# search); think this can be solved by hitting enter a bunch before starting
 
 ## Constants & Helper Functions ##
 
-DURPLOY_VERSION="0.0.4"
+DURPLOY_VERSION="0.0.5"
 DURPLOY_HELP_FOOTER="
 Report bugs to: ~sidnym-ladrut
-durploy home page: <https://github.com/sidnym-ladrut/durploy/>"
+durploy home page: <https://github.com/sidnym-ladrut/durploy>"
 DURPLOY_HELP_BASE="usage: durploy [-v | --version] [-h | --help] <command> [<args>]
 d(e)ploy ur(bit) ships and desks
 
@@ -98,44 +94,46 @@ _durploy__check_desk_path() {
 	fi
 }
 
-_durploy__send_cmds() {
-	_durploy_sendkeys_sesh=$1; shift
+_durploy__send_dojo() {
+	_durploy_senddojo_shippath=$1
+	_durploy_senddojo_cmddojo=$2
+	_durploy_senddojo_cmdapp=$3
 
-	_durploy_sendkeys_cmds="C-m"
-	for _durploy_sendkeys_cmd in "$@"; do
-		_durploy_sendkeys_cmds=$(printf "%s\n%s\nC-m" \
-			"$_durploy_sendkeys_cmds" "$_durploy_sendkeys_cmd"
-		)
-	done
+	_durploy_senddojo_shipport=$(awk '/loopback/ {print $1;}' < "$_durploy_senddojo_shippath/.http.ports")
+	_durploy_senddojo_cmdsource="{\"dojo\":\"$_durploy_senddojo_cmddojo\"}"
+	if [ -z "$_durploy_senddojo_cmdapp" ] ; then
+		_durploy_senddojo_cmdsink="{\"stdout\":null}"
+	else
+		_durploy_senddojo_cmdsink="{\"app\":\"$_durploy_senddojo_cmdapp\"}"
+	fi
 
-	# echo "$_durploy_sendkeys_cmds" | xargs -d '\n' printf "%s\n"
-	echo "$_durploy_sendkeys_cmds" | xargs -d '\n' \
-		tmux send-keys -t "$_durploy_sendkeys_sesh:0"
+	curl -s --data \
+		"{\"source\":$_durploy_senddojo_cmdsource,\"sink\":$_durploy_senddojo_cmdsink}" \
+		"http://127.0.0.1:$_durploy_senddojo_shipport" >/dev/null 2>&1
+}
+_durploy__send_hood() {
+	_durploy__send_dojo "$1" "$(echo "$2" | sed 's/^|/+hood\//')" "hood"
 }
 
 _durploy__desk_install() {
 	_durploy_install_desk=$1
-	_durploy_install_sesh=$2
-	_durploy_install_from="$(readlink -f "$3")"
-	_durploy_install_to="$(readlink -f "$4")"
+	_durploy_install_from="$(readlink -f "$2")"
+	_durploy_install_to="$(readlink -f "$3")"
 
-	_durploy__send_cmds "$_durploy_install_sesh" "|new-desk %$_durploy_install_desk" "y"
-	_durploy__send_cmds "$_durploy_install_sesh" "|mount %$_durploy_install_desk"
-	# FIXME: Change this to `inotifywait` on Linux and `fswatch` on Mac
-	while [ ! -d "$_durploy_install_to" ]; do sleep 1; done
+	_durploy__send_hood "$(dirname "$_durploy_install_to")" "|new-desk %$_durploy_install_desk, =hard &"
+	_durploy__send_hood "$(dirname "$_durploy_install_to")" "|mount %$_durploy_install_desk"
 
 	rsync -rcuL "$_durploy_install_from/" "$_durploy_install_to/"
 
-	_durploy__send_cmds "$_durploy_install_sesh" "|commit %$_durploy_install_desk"
-	_durploy__send_cmds "$_durploy_install_sesh" "|install our %$_durploy_install_desk"
+	_durploy__send_hood "$(dirname "$_durploy_install_to")" "|commit %$_durploy_install_desk"
+	_durploy__send_hood "$(dirname "$_durploy_install_to")" "|install our %$_durploy_install_desk"
 }
 
 _durploy__desk_sync() {
 	_durploy_sync_desk=$1
-	_durploy_sync_sesh=$2
-	_durploy_sync_from="$(readlink -f "$3")"
-	_durploy_sync_to="$(readlink -f "$4")"
-	_durploy_sync_rstrat=$5
+	_durploy_sync_from="$(readlink -f "$2")"
+	_durploy_sync_to="$(readlink -f "$3")"
+	_durploy_sync_rstrat=$4
 
 	_durploy_sync_files=$(rsync -in -rcuL "$_durploy_sync_from/" "$_durploy_sync_to/" \
 		| awk '{if ($0 == "") exit; else print $2;}'
@@ -175,11 +173,11 @@ _durploy__desk_sync() {
 		done
 
 		for _durploy_sync_reloadapp in $_durploy_sync_reloadapps; do
-			_durploy__send_cmds "$_durploy_sync_sesh" "|nuke %$_durploy_sync_reloadapp" "y"
+			_durploy__send_hood "$(dirname "$_durploy_sync_to")" "|nuke %$_durploy_sync_reloadapp, =hard &"
 		done
-		_durploy__send_cmds "$_durploy_sync_sesh" "|commit %$_durploy_sync_desk"
+		_durploy__send_hood "$(dirname "$_durploy_sync_to")" "|commit %$_durploy_sync_desk"
 		for _durploy_sync_reloadapp in $_durploy_sync_reloadapps; do
-			_durploy__send_cmds "$_durploy_sync_sesh" "|revive %$_durploy_sync_reloadapp"
+			_durploy__send_hood "$(dirname "$_durploy_sync_to")" "|revive %$_durploy_sync_reloadapp"
 		done
 	fi
 }
@@ -204,29 +202,15 @@ durploy__ship() {
 		&& [ "$durploy_ship_name" != "$(basename "$durploy_bkup_path")" ] \
 		&& _durploy__error "mismatch between ship name '$durploy_ship_name' and backup name"
 
-	durploy_ship_sesh="urbit-$durploy_ship_name"
-	durploy_ship_tmuxcmd="tmux attach -t $durploy_ship_sesh"
-
-	# if an urbit is already running for this pier, tell the user about
-	# the running tmux session (or, if the urbit is running outside the
-	# expected tmux session, emit an error)
+	# if an urbit is already running for this pier, tell the user
 	if pgrep -f "urbit serf $(readlink -f "$durploy_ship_path")" | grep -q -v "grep"; then
-		if tmux has-session -t "$durploy_ship_sesh" 2>/dev/null; then
-			if [ -n "$durploy_bkup_path" ] && [ ! -e "$durploy_bkup_path" ]; then
-				_durploy__error "failed to perform backup; can't copy files from a running urbit"
-			else
-				# FIXME: Should be '_durploy_info" or similar, but using a helper is tricky
-				# when the output needs to include newlines
-				echo "urbit is already running in tmux session; start with:"
-				echo "$durploy_ship_tmuxcmd"
-				return 0
-			fi
+		if [ -n "$durploy_bkup_path" ] && [ ! -e "$durploy_bkup_path" ]; then
+			_durploy__error "failed to perform backup; can't copy files from a running urbit"
 		else
-			_durploy__error "urbit running out of tmux session; terminate it to continue"
+			_durploy__info "urbit ship $durploy_ship_name is already running"
 		fi
 	# if an urbit isn't running, we check the pier for validity and initialize
-	# it if need be, then we create a tmux session (or start the urbit in the
-	# existing session)
+	# it if need be
 	else
 		# if the pier doesn't exist yet, try to create it
 		if [ ! -e "$durploy_ship_path" ]; then
@@ -249,13 +233,7 @@ durploy__ship() {
 			cp -r "$durploy_ship_path" "$durploy_bkup_path"
 		fi
 
-		if ! tmux has-session -t "$durploy_ship_sesh" 2>/dev/null; then
-			tmux set-option -g history-limit 1000000 \; new-session -d -s "$durploy_ship_sesh"
-		fi
-
-		_durploy__send_cmds "$durploy_ship_sesh" "urbit -L $durploy_ship_path"
-		echo "tmux session started; start with:"
-		echo "$durploy_ship_tmuxcmd"
+		urbit -L "$durploy_ship_path"
 	fi
 }
 
@@ -288,22 +266,15 @@ durploy__desk() {
 		&& _durploy__error "invalid reset strategy '$durploy_desk_resetstrat'; try one of '$DURPLOY_RESET_STRATS'"
 
 	durploy_ship_name=$(basename "$(readlink -f "$durploy_desk_shippath")")
-	durploy_ship_sesh="urbit-$durploy_ship_name"
 
-	# urbit must be running in the proper tmux session to run a desk deployment
-	if ! pgrep -f "urbit serf $(readlink -f "$durploy_desk_shippath")" | grep -q -v "grep" \
-			|| ! tmux has-session -t "$durploy_ship_sesh" 2>/dev/null; then
-		# FIXME: Should be '_durploy_error" or similar, but using a helper is tricky
-		# when the output needs to include newlines
-		echo "need to initialize/run target ship before deploying desk; please run:"
-		echo "$0 ship $durploy_ship_name $durploy_desk_shippath"
-		exit 1
+	# urbit ship must be live to run a desk deployment
+	if ! pgrep -f "urbit serf $(readlink -f "$durploy_desk_shippath")" | grep -q -v "grep"; then
+		_durploy_error "must run ship to deploy desk; please run: $0 ship $durploy_desk_shippath"
 	fi
 
 	if [ ! -d "$durploy_desk_shipcodepath" ]; then
 		_durploy__desk_install \
 			"$durploy_desk_name" \
-			"$durploy_ship_sesh" \
 			"$durploy_desk_codepath" \
 			"$durploy_desk_shipcodepath"
 	fi
@@ -311,7 +282,6 @@ durploy__desk() {
 	while : ; do
 		_durploy__desk_sync \
 			"$durploy_desk_name" \
-			"$durploy_ship_sesh" \
 			"$durploy_desk_codepath" \
 			"$durploy_desk_shipcodepath" \
 			"$durploy_desk_resetstrat"
