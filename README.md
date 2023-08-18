@@ -89,6 +89,7 @@ This list is ordered roughly in descending order of expected availability:
 - [`basename`](https://www.man7.org/linux/man-pages/man1/basename.1p.html)
 - [`dirname`](https://www.man7.org/linux/man-pages/man1/dirname.1p.html)
 - [`sleep`](https://www.man7.org/linux/man-pages/man1/sleep.1p.html)
+- [`kill`](https://www.man7.org/linux/man-pages/man1/kill.1.html)
 
 
 [Urbit website]: https://developers.urbit.org/

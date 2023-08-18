@@ -32,12 +32,15 @@ Flag arguments:
   -v, --version: Show the software version
   -h, --help: Show this help message
 $DURPLOY_HELP_FOOTER"
-DURPLOY_HELP_SHIP="usage: durploy ship <ship-path> [<bkup-path>]
+DURPLOY_HELP_SHIP="usage: durploy ship [-u | --uid <ship-uid>] <ship-path> [<bkup-path>]
 Generate and run Urbit ships
 
 Positional arguments:
   ship-path: The file path for the ship's pier (e.g. /path/to/zod)
   bkup-path: The file path for the ship's backup (e.g. /path/to/backup/zod)
+
+Flag arguments:
+  -u, --uid: The Urbit ID of the ship to be deployed at the given path (default: zod)
 $DURPLOY_HELP_FOOTER"
 DURPLOY_HELP_DESK="usage: durploy desk [-w | --watch] [-r | --reset-strategy]
                     <desk> <desk-path> <ship-path>
@@ -76,24 +79,6 @@ _durploy__invalid_desk() {
 	echo "(scan \"$1\" sym)" | urbit eval 2>&1 | grep -q "bail: %exit"
 }
 
-_durploy__check_desk_path() {
-	_durploy_checkdp_path=$1
-	_durploy_checkdp_name="$(basename "$_durploy_checkdp_path")"
-
-	_durploy__invalid_ship "$_durploy_checkdp_name" \
-		&& _durploy__error "invalid ship name '$_durploy_checkdp_name' for path '$_durploy_checkdp_path'"
-	if [ ! -e "$_durploy_checkdp_path" ]; then
-		mkdir -p "$(dirname "$_durploy_checkdp_path")" \
-			|| _durploy__error "couldn't create directory at path '$_durploy_checkdp_path'"
-	elif [ ! -d "$_durploy_checkdp_path" ]; then
-		_durploy__error "invalid artifact exists at path '$_durploy_checkdp_path'"
-	# TODO: Implement a reliable check for the ship hosted for a particular
-	# dir (ideally one that doesn't require booting the Urbit)
-	elif false; then
-		_durploy__error "bad pier for ship '$_durploy_checkdp_name' exists at path '$_durploy_checkdp_path'"
-	fi
-}
-
 _durploy__send_dojo() {
 	_durploy_senddojo_shippath=$1
 	_durploy_senddojo_cmddojo=$2
@@ -109,10 +94,39 @@ _durploy__send_dojo() {
 
 	curl -s --data \
 		"{\"source\":$_durploy_senddojo_cmdsource,\"sink\":$_durploy_senddojo_cmdsink}" \
-		"http://127.0.0.1:$_durploy_senddojo_shipport" >/dev/null 2>&1
+		"http://127.0.0.1:$_durploy_senddojo_shipport" \
+		| xargs printf %s | sed 's/\\n/\n/g'
 }
 _durploy__send_hood() {
 	_durploy__send_dojo "$1" "$(echo "$2" | sed 's/^|/+hood\//')" "hood"
+}
+
+_durploy__grab_ship_uid() {
+	_durploy_grabuid_path=$1
+
+	urbit -d -L "$_durploy_grabuid_path" >/dev/null 2>&1
+	_durploy_grabuid_suid="$(_durploy__send_dojo "$_durploy_grabuid_path" "our")"
+	kill -9 "$(pgrep -f "urbit serf $(readlink -f "$_durploy_grabuid_path")")" >/dev/null 2>&1
+	echo "$_durploy_grabuid_suid" | sed 's/^~//'
+}
+
+_durploy__check_desk_path() {
+	_durploy_checkdp_path=$1
+	_durploy_checkdp_uid=$2
+
+	_durploy__invalid_ship "$_durploy_checkdp_uid" \
+		&& _durploy__error "invalid ship name '$_durploy_checkdp_uid'"
+	if [ ! -e "$_durploy_checkdp_path" ]; then
+		mkdir -p "$(dirname "$_durploy_checkdp_path")" \
+			|| _durploy__error "couldn't create directory at path '$_durploy_checkdp_path'"
+	elif [ ! -d "$_durploy_checkdp_path" ]; then
+		_durploy__error "invalid artifact exists at path '$_durploy_checkdp_path'"
+	else
+		_durploy_checkdp_rid="$(_durploy__grab_ship_uid "$_durploy_checkdp_path")"
+		if [ "$_durploy_checkdp_rid" != "$_durploy_checkdp_uid" ]; then
+			_durploy__error "invalid pier for '$_durploy_checkdp_uid' at '$_durploy_checkdp_path' (pier @p: '$_durploy_checkdp_rid')"
+		fi
+	fi
 }
 
 _durploy__desk_install() {
@@ -187,6 +201,7 @@ _durploy__desk_sync() {
 durploy__ship() {
 	while : ; do case $1 in
 		-h | --help) printf "%s\\n" "$DURPLOY_HELP_SHIP" && exit 1 ;;
+		-u | --uid) durploy_ship_uid=$2 && shift 2 ;;
 		-*) printf "invalid option: %s\\n" "$1" && exit 1 ;;
 		*) break ;;
 	esac done
@@ -194,37 +209,34 @@ durploy__ship() {
 
 	durploy_ship_path=$1; shift
 	durploy_bkup_path=$1; shift
-	durploy_ship_name=$(basename "$durploy_ship_path")
-
-	_durploy__check_desk_path "$durploy_ship_path"
-	[ -n "$durploy_bkup_path" ] && _durploy__check_desk_path "$durploy_bkup_path"
-	[ -n "$durploy_bkup_path" ] \
-		&& [ "$durploy_ship_name" != "$(basename "$durploy_bkup_path")" ] \
-		&& _durploy__error "mismatch between ship name '$durploy_ship_name' and backup name"
+	[ -z "$durploy_ship_uid" ] && durploy_ship_uid="zod"
 
 	# if an urbit is already running for this pier, tell the user
 	if pgrep -f "urbit serf $(readlink -f "$durploy_ship_path")" | grep -q -v "grep"; then
 		if [ -n "$durploy_bkup_path" ] && [ ! -e "$durploy_bkup_path" ]; then
 			_durploy__error "failed to perform backup; can't copy files from a running urbit"
 		else
-			_durploy__info "urbit ship $durploy_ship_name is already running"
+			_durploy__info "urbit ship '$durploy_ship_path' is already running"
 		fi
 	# if an urbit isn't running, we check the pier for validity and initialize
 	# it if need be
 	else
+		_durploy__check_desk_path "$durploy_ship_path" "$durploy_ship_uid"
+		[ -n "$durploy_bkup_path" ] && _durploy__check_desk_path "$durploy_bkup_path" "$durploy_ship_uid"
+
 		# if the pier doesn't exist yet, try to create it
 		if [ ! -e "$durploy_ship_path" ]; then
 			# if the backup exists and is valid, then copy it to the new pier path
 			if [ -d "$durploy_bkup_path" ] && urbit -t -x -L "$durploy_bkup_path"; then
 				cp -r "$durploy_bkup_path" "$durploy_ship_path"
 			# otherwise, attempt to create a new pier for the ship
-			elif ! urbit -t -x -L -c "$durploy_ship_path" -F "$durploy_ship_name"; then
-				_durploy__error "couldn't create ship '$durploy_ship_name' at '$durploy_ship_path'"
+			elif ! urbit -t -x -L -c "$durploy_ship_path" -F "$durploy_ship_uid"; then
+				_durploy__error "couldn't create ship '$durploy_ship_uid' at '$durploy_ship_path'"
 			fi
 		# else, attempt to boot the urbit and immediately exit
 		else
 			if ! urbit -t -x -L "$durploy_ship_path"; then
-				_durploy__error "couldn't revive ship '$durploy_ship_name' at '$durploy_ship_path'"
+				_durploy__error "couldn't revive ship '$durploy_ship_uid' at '$durploy_ship_path'"
 			fi
 		fi
 
@@ -259,13 +271,10 @@ durploy__desk() {
 	# FIXME: || ! find "$durploy_desk_codepath" -maxdepth 0 -empty | read -r _
 	[ ! -d "$durploy_desk_codepath" ] \
 		&& _durploy__error "invalid urbit code desk at '$durploy_desk_codepath'"
-	# FIXME: Actually check that the directory is a valid Urbit ship
 	[ ! -d "$durploy_desk_shippath" ] \
 		&& _durploy__error "invalid urbit ship at '$durploy_desk_shippath'"
 	! echo "$durploy_desk_resetstrat" | grep -q -E "$DURPLOY_RESET_STRATS_REGEX" \
 		&& _durploy__error "invalid reset strategy '$durploy_desk_resetstrat'; try one of '$DURPLOY_RESET_STRATS'"
-
-	durploy_ship_name=$(basename "$(readlink -f "$durploy_desk_shippath")")
 
 	# urbit ship must be live to run a desk deployment
 	if ! pgrep -f "urbit serf $(readlink -f "$durploy_desk_shippath")" | grep -q -v "grep"; then
@@ -311,7 +320,7 @@ durploy() {
 }
 
 # if the functions above are sourced into an interactive interpreter, the user can
-# just call "yum download" or "yum maintenance" with no further code needed.
+# just call "durploy ship" or "durploy desk" with no further code needed.
 
 # if invoked as a script rather than sourced, call function named on argv via the below;
 # note that this must be the first operation other than a function definition
