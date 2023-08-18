@@ -81,6 +81,7 @@ This list is ordered roughly in descending order of expected availability:
 - [`readlink`](https://www.man7.org/linux/man-pages/man1/readlink.1.html)
 - [`find`](https://www.man7.org/linux/man-pages/man1/find.1p.html)
 - [`xargs`](https://www.man7.org/linux/man-pages/man1/xargs.1p.html)
+- [`sha256sum`](https://www.man7.org/linux/man-pages/man1/sha256sum.1.html)
 - [`mkdir`](https://www.man7.org/linux/man-pages/man1/mkdir.1p.html)
 - [`awk`](https://www.man7.org/linux/man-pages/man1/awk.1p.html)
 - [`sed`](https://www.man7.org/linux/man-pages/man1/sed.1p.html)
