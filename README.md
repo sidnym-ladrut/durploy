@@ -73,6 +73,7 @@ should be readily available to install on most modern \*NIX systems.
 
 This list is ordered roughly in descending order of expected availability:
 
+- [`which`](https://linux.die.net/man/1/which)
 - [`bash`](https://www.man7.org/linux/man-pages/man1/bash.1.html)
 - [`rsync`](https://www.man7.org/linux/man-pages/man1/rsync.1.html)
 - [`curl`](https://www.man7.org/linux/man-pages/man1/curl.1.html)
