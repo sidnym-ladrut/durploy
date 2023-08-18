@@ -19,19 +19,13 @@ DURPLOY_HELP_FOOTER="
 Report bugs to: ~sidnym-ladrut
 durploy home page: <https://github.com/sidnym-ladrut/durploy>"
 DURPLOY_HELP_BASE="usage: durploy [-v | --version] [-h | --help]
-                     [-b | --bin] [-c | --cwd]
-                     <command> [<args>]
+               [-b | --bin <bin-path>] [-c | --cwd]
+               <command> [<args>]
 d(e)ploy ur(bit) ships and desks
 
 Command options:
   ship: Generate and run Urbit ships
   desk: Deploy desk files to running Urbit ships
-
-Config options (via environment variables or config file):
-  DURPLOY_CONFIG_FILE: Path to the config file (default: \$XDG_CONFIG_HOME/durploy/durployrc)
-  DURPLOY_SHIP_DIR: Path for storing ship piers (default: \$XDG_CACHE_HOME/durploy/ships)
-  DURPLOY_BACKUP_DIR: Path for storing ship backups (default: \$XDG_CACHE_HOME/durploy/backups)
-  DURPLOY_URBIT_BIN: Path to default Urbit binary (default: \$(which urbit))
 
 Flag arguments:
   -v, --version: Show the software version
@@ -41,6 +35,12 @@ Flag arguments:
     (default: \$DURPLOY_URBIT_BIN)
   -c, --cwd: Set ship paths to be relative to the current working directory
     (default: relative to \$DURPLOY_SHIP_DIR)
+
+Config options (via environment variables or config file):
+  DURPLOY_CONFIG_FILE: Path to the config file (default: \$XDG_CONFIG_HOME/durploy/durployrc)
+  DURPLOY_SHIP_DIR: Path for storing ship piers (default: \$XDG_CACHE_HOME/durploy/ships)
+  DURPLOY_BACKUP_DIR: Path for storing ship backups (default: \$XDG_CACHE_HOME/durploy/backups)
+  DURPLOY_URBIT_BIN: Path to default Urbit binary (default: \$(which urbit))
 $DURPLOY_HELP_FOOTER"
 DURPLOY_HELP_SHIP="usage: durploy ship [-u | --uid <ship-uid>] <ship-path>
 Generate and run Urbit ships
