@@ -91,10 +91,10 @@ DURPLOY_CONFIG_FILE="${DURPLOY_CONFIG_FILE:-${XDG_CONFIG_HOME:-~/.config}/durplo
 
 DURPLOY_SHIP_DIR="${DURPLOY_SHIP_DIR:-${XDG_CACHE_HOME:-~/.cache}/durploy/ships}"
 DURPLOY_BACKUP_DIR="${DURPLOY_BACKUP_DIR:-${XDG_CACHE_HOME:-~/.cache}/durploy/backups}"
-DURPLOY_BUILTIN_DIR="${DURPLOY_BACKUP_DIR:-${XDG_CACHE_HOME:-~/.cache}/durploy/builtin}"
+DURPLOY_CACHE_DIR="${DURPLOY_CACHE_DIR:-${XDG_CACHE_HOME:-~/.cache}/durploy/cache}"
 DURPLOY_URBIT_BIN="${DURPLOY_URBIT_BIN:-$(which urbit)}"
 
-for _durploy_dir in "$DURPLOY_SHIP_DIR" "$DURPLOY_BACKUP_DIR" "$DURPLOY_BUILTIN_DIR"; do
+for _durploy_dir in "$DURPLOY_SHIP_DIR" "$DURPLOY_BACKUP_DIR" "$DURPLOY_CACHE_DIR"; do
 	if [ ! -d "$_durploy_dir" ]; then
 		mkdir -p "$_durploy_dir" || \
 			_durploy__error "couldn't create config directory at path '$_durploy_dir'"
@@ -175,18 +175,74 @@ _durploy__check_desk_path() {
 	fi
 }
 
+# ====> cp -r pkg/arvo/ squad/mar/
+# ====> cp -r pkg/arvo/ squad/lib/ # this is for debug files
+#
+# ====> git clone git@github.com:urbit/urbit.git
+# ====> cd urbit
+# ====> git checkout $(git describe --tags $(git rev-list --tags --max-count=1))
+# ====> cp -r pkg/arvo/mar/{bill*,hoon*,json*,kelvin*,mime*,noun*,ship*,txt*} squad/mar/
+# ====> cp -r pkg/arvo/lib/{agentio*,dbug*,default-agent*,skeleton*} squad/lib/ # this is for debug files
+# ====> cd ..
+# ====> git clone git@github.com:tloncorp/landscape.git
+# ====> cd landscape
+# ====> git checkout $(git describe --tags $(git rev-list --tags --max-count=1))
+# ====> cp -r # TODO: all docket files
+
+_durploy__desk_init() {
+	_durploy_init_desk=$1
+	_durploy_init_pier="$(readlink -f "$2")"
+	_durploy__send_hood "$_durploy_init_pier" "|new-desk %$_durploy_init_desk, =hard &"
+	_durploy__send_hood "$_durploy_init_pier" "|mount %$_durploy_init_desk"
+}
+_durploy__desk_cdir() {
+	_durploy_copydir_desk=$1
+	_durploy_copydir_pier="$(readlink -f "$2")"
+	_durploy_copydir_from="$(readlink -f "$3")"
+	rsync -rcuL "$_durploy_copydir_from/" "$_durploy_copydir_pier/$_durploy_copydir_desk/"
+}
+_durploy__desk_cgit() {
+	_durploy_copygit_desk=$1
+	_durploy_copygit_pier="$(readlink -f "$2")"
+	_durploy_copygit_repo=$3
+	_durploy_copygit_hash=$4
+	_durploy_copygit_from=$5
+	_durploy_copygit_dest=$6
+
+	_durploy_copygit_repopath="$DURPLOY_CACHE_DIR/$(echo "$_durploy_copygit_repo" | sed -re 's|.*/(.+)\.git|\1|g')"
+	_durploy_copygit_frompath="$_durploy_copygit_repopath/$_durploy_copygit_from"
+	_durploy_copygit_destpath="$_durploy_copygit_pier/$_durploy_copygit_desk/$_durploy_copygit_dest"
+
+	if [ ! -d "$_durploy_copygit_repopath" ]; then
+		git clone "$_durploy_copygit_repo" "$_durploy_copygit_repopath"
+	else
+		# TODO: Verify that this is a git repository with the proper remote, i.e. "$_durploy_copygit_repo"
+		:
+	fi
+
+	if [ ! -z "$_durploy_copygit_hash" ]; then
+		# TODO: Checkout the specified version
+		# git -C "$_durploy_copygit_repopath" checkout $(git describe --tags $(git rev-list --tags --max-count=1))
+		:
+	fi
+
+	rsync -rcuL "$_durploy_copygit_frompath" "$_durploy_copygit_destpath"
+}
+_durploy__desk_wrap() {
+	_durploy_wrap_desk=$1
+	_durploy_wrap_pier="$(readlink -f "$2")"
+	_durploy__send_hood "$_durploy_wrap_pier" "|commit %$_durploy_wrap_desk"
+	_durploy__send_hood "$_durploy_wrap_pier" "|install our %$_durploy_wrap_desk"
+}
+
 _durploy__desk_install() {
 	_durploy_install_desk=$1
 	_durploy_install_pier="$(readlink -f "$2")"
 	_durploy_install_from="$(readlink -f "$3")"
 
-	_durploy__send_hood "$_durploy_install_pier" "|new-desk %$_durploy_install_desk, =hard &"
-	_durploy__send_hood "$_durploy_install_pier" "|mount %$_durploy_install_desk"
-
-	rsync -rcuL "$_durploy_install_from/" "$_durploy_install_pier/$_durploy_install_desk/"
-
-	_durploy__send_hood "$_durploy_install_pier" "|commit %$_durploy_install_desk"
-	_durploy__send_hood "$_durploy_install_pier" "|install our %$_durploy_install_desk"
+	_durploy__desk_init "$_durploy_install_desk" "$_durploy_install_pier"
+	_durploy__desk_cdir "$_durploy_install_from" "$_durploy_install_pier" "$_durploy_install_from"
+	_durploy__desk_wrap "$_durploy_install_desk" "$_durploy_install_pier"
 }
 
 _durploy__desk_sync() {
@@ -271,48 +327,47 @@ durploy__ship() {
 	done
 
 	if [ "$durploy_command_usecwd" = "true" ]; then
-		durploy_ship_path="$(cwd)/$durploy_ship_base"
+		durploy_ship_pier="$(cwd)/$durploy_ship_base"
 	else
-		durploy_ship_path="$DURPLOY_SHIP_DIR/$durploy_ship_base"
+		durploy_ship_pier="$DURPLOY_SHIP_DIR/$durploy_ship_base"
 	fi
 	durploy_bkup_path="$DURPLOY_BACKUP_DIR/$(_durploy__hash_config "$durploy_ship_uid")"
 
-	if _durploy__check_ship_live "$durploy_ship_path"; then
+	if _durploy__check_ship_live "$durploy_ship_pier"; then
 		_durploy__info "urbit ship '$durploy_ship_base' is already running"
 	else
-		_durploy__check_desk_path "$durploy_ship_path" "$durploy_ship_uid"
+		_durploy__check_desk_path "$durploy_ship_pier" "$durploy_ship_uid"
 		_durploy__check_desk_path "$durploy_bkup_path" "$durploy_ship_uid"
 
 		# if the pier doesn't exist yet, try to create it
-		if [ ! -e "$durploy_ship_path" ]; then
+		if [ ! -e "$durploy_ship_pier" ]; then
 			# if the backup exists and is valid, then copy it to the new pier path
 			if [ -d "$durploy_bkup_path" ] && "$durploy_command_binary" -t -x -L "$durploy_bkup_path"; then
-				cp -r "$durploy_bkup_path" "$durploy_ship_path"
+				cp -r "$durploy_bkup_path" "$durploy_ship_pier"
 			# otherwise, attempt to create a new pier for the ship
-			elif ! "$durploy_command_binary" -t -x -L -c "$durploy_ship_path" -F "$durploy_ship_uid"; then
-				_durploy__error "couldn't create ship '$durploy_ship_uid' at '$durploy_ship_path'"
+			elif ! "$durploy_command_binary" -t -x -L -c "$durploy_ship_pier" -F "$durploy_ship_uid"; then
+				_durploy__error "couldn't create ship '$durploy_ship_uid' at '$durploy_ship_pier'"
 			fi
 		# else, attempt to boot the urbit and immediately exit
 		else
-			if ! "$durploy_command_binary" -t -x -L "$durploy_ship_path"; then
-				_durploy__error "couldn't revive ship '$durploy_ship_uid' at '$durploy_ship_path'"
+			if ! "$durploy_command_binary" -t -x -L "$durploy_ship_pier"; then
+				_durploy__error "couldn't revive ship '$durploy_ship_uid' at '$durploy_ship_pier'"
 			fi
 		fi
 
 		# if the backup doesn't exist, copy the new pier into that path
 		if [ -n "$durploy_bkup_path" ] && [ ! -e "$durploy_bkup_path" ]; then
-			cp -r "$durploy_ship_path" "$durploy_bkup_path"
-		else
-			"$durploy_command_binary" -d -L "$durploy_ship_path" >/dev/null 2>&1
+			cp -r "$durploy_ship_pier" "$durploy_bkup_path"
+		elif [ "0" != "$#" ]; then
+			"$durploy_command_binary" -d -L "$durploy_ship_pier" >/dev/null 2>&1
 			for _durploy_ship_script in "$@"; do
 				# shellcheck disable=SC1090
-				# . "$(readlink -f "$_durploy_ship_script")"
-				echo "$_durploy_ship_script"
+				. "$(readlink -f "$_durploy_ship_script")"
 			done
-			kill -9 "$(pgrep -f "$durploy_command_binary serf $(readlink -f "$durploy_ship_path")")" >/dev/null 2>&1
+			kill -9 "$(pgrep -f "$durploy_command_binary serf $(readlink -f "$durploy_ship_pier")")" >/dev/null 2>&1
 		fi
 
-		"$durploy_command_binary" -L "$durploy_ship_path"
+		"$durploy_command_binary" -L "$durploy_ship_pier"
 	fi
 }
 
