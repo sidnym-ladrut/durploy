@@ -15,12 +15,11 @@ issues with missing commands.
 ### Quick and Easy ###
 
 ```bash
-curl -LO https://github.com/sidnym-ladrut/durploy/archive/refs/heads/develop.zip
-unzip develop.zip
-durploy-develop/durploy
+curl -LO https://raw.githubusercontent.com/urbit/durploy/release/durploy
+./durploy
 ```
 
-### Package Distribution ###
+### Package Manager ###
 
 `durploy` isn't currently available via standard package managers. Once it is,
 instructions on installing via these managers will be filled in here.
@@ -30,24 +29,26 @@ instructions on installing via these managers will be filled in here.
 ### Create/Run a Development Ship ###
 
 ```bash
-durploy ship /path/to/zod
+durploy ship zod
 ```
 
 ### Synchronize a Desk to a Running Ship ###
 
 ```bash
-durploy desk my-desk /path/to/my-desk /path/to/zod
+durploy desk zod my-desk /path/to/my-desk
 ```
 
 ### Continually Deploy a Desk to a Running Ship ###
 
 ```bash
-durploy desk --watch my-desk /path/to/my-desk /path/to/zod
+durploy desk -w zod my-desk /path/to/my-desk
 ```
 
 ## Configuration ##
 
 This section will be written once `durploy` supports configuration files.
+
+TODO: Write this section
 
 ## Inspiration/Alternatives ##
 
@@ -74,6 +75,7 @@ should be readily available to install on most modern \*NIX systems.
 This list is ordered roughly in descending order of expected availability:
 
 - [`which`](https://linux.die.net/man/1/which)
+- [`git`](https://www.man7.org/linux/man-pages/man1/git.1.html)
 - [`bash`](https://www.man7.org/linux/man-pages/man1/bash.1.html)
 - [`rsync`](https://www.man7.org/linux/man-pages/man1/rsync.1.html)
 - [`curl`](https://www.man7.org/linux/man-pages/man1/curl.1.html)

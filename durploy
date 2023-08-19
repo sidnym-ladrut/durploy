@@ -42,24 +42,26 @@ Config options (via environment variables or config file):
   DURPLOY_BACKUP_DIR: Path for storing ship backups (default: \$XDG_CACHE_HOME/durploy/backups)
   DURPLOY_URBIT_BIN: Path to default Urbit binary (default: \$(which urbit))
 $DURPLOY_HELP_FOOTER"
-DURPLOY_HELP_SHIP="usage: durploy ship [-u | --uid <ship-uid>] <ship-path>
-Generate and run Urbit ships
+DURPLOY_HELP_SHIP="usage: durploy ship [-u | --uid <ship-uid>]
+                      <ship-path> [<boot-script> ...]
+Generate and run Urbit ships (w/ optional boot script(s))
 
 Positional arguments:
   ship-path: The relative file path for the ship's pier (e.g. testing/zod)
+  boot-script: The file path for the boot script (e.g. /path/to/init.sh)
 
 Flag arguments:
   -u, --uid: The Urbit ID of the ship to be deployed at the given path
     (default: zod)
 $DURPLOY_HELP_FOOTER"
-DURPLOY_HELP_DESK="usage: durploy desk [-w | --watch] [-r | --reset-strategy]
-                     <desk> <desk-path> <ship-path>
+DURPLOY_HELP_DESK="usage: durploy desk [-w | --watch] [-r | --reset-strategy <strategy>]
+                    <ship-path> <desk-name> <desk-path>
 Deploy desk files to running Urbit ships
 
 Positional arguments:
-  desk: The name of the desk to deploy (e.g. my-desk)
-  desk-path: The file path for the desk's source files (e.g. /path/to/my-desk)
   ship-path: The relative file path for the ship's pier (e.g. testing/zod)
+  desk-name: The name of the desk to deploy (e.g. my-desk)
+  desk-path: The file path for the desk's source files (e.g. /path/to/my-desk)
 
 Flag arguments:
   -w, --watch: Monitor <desk-path> for changes and deploy continuously
@@ -89,16 +91,15 @@ DURPLOY_CONFIG_FILE="${DURPLOY_CONFIG_FILE:-${XDG_CONFIG_HOME:-~/.config}/durplo
 
 DURPLOY_SHIP_DIR="${DURPLOY_SHIP_DIR:-${XDG_CACHE_HOME:-~/.cache}/durploy/ships}"
 DURPLOY_BACKUP_DIR="${DURPLOY_BACKUP_DIR:-${XDG_CACHE_HOME:-~/.cache}/durploy/backups}"
+DURPLOY_BUILTIN_DIR="${DURPLOY_BACKUP_DIR:-${XDG_CACHE_HOME:-~/.cache}/durploy/builtin}"
 DURPLOY_URBIT_BIN="${DURPLOY_URBIT_BIN:-$(which urbit)}"
 
-if [ ! -d "$DURPLOY_SHIP_DIR" ]; then
-	mkdir -p "$DURPLOY_SHIP_DIR" \
-		|| _durploy__error "couldn't create default ship directory at path '$DURPLOY_SHIP_DIR'"
-fi
-if [ ! -d "$DURPLOY_BACKUP_DIR" ]; then
-	mkdir -p "$DURPLOY_BACKUP_DIR" \
-		|| _durploy__error "couldn't create default backup directory at path '$DURPLOY_BACKUP_DIR'"
-fi
+for _durploy_dir in "$DURPLOY_SHIP_DIR" "$DURPLOY_BACKUP_DIR" "$DURPLOY_BUILTIN_DIR"; do
+	if [ ! -d "$_durploy_dir" ]; then
+		mkdir -p "$_durploy_dir" || \
+			_durploy__error "couldn't create config directory at path '$_durploy_dir'"
+	fi
+done
 [ ! -x "$DURPLOY_URBIT_BIN" ] && \
 	_durploy__error "couldn't find default vere binary at path '$DURPLOY_URBIT_BIN'"
 
@@ -112,11 +113,11 @@ _durploy__invalid_desk() {
 }
 
 _durploy__send_dojo() {
-	_durploy_senddojo_shippath=$1
+	_durploy_senddojo_pier=$1
 	_durploy_senddojo_cmddojo=$2
 	_durploy_senddojo_cmdapp=$3
 
-	_durploy_senddojo_shipport=$(awk '/loopback/ {print $1;}' < "$_durploy_senddojo_shippath/.http.ports")
+	_durploy_senddojo_shipport=$(awk '/loopback/ {print $1;}' < "$_durploy_senddojo_pier/.http.ports")
 	_durploy_senddojo_cmdsource="{\"dojo\":\"$_durploy_senddojo_cmddojo\"}"
 	if [ -z "$_durploy_senddojo_cmdapp" ] ; then
 		_durploy_senddojo_cmdsink="{\"stdout\":null}"
@@ -176,25 +177,25 @@ _durploy__check_desk_path() {
 
 _durploy__desk_install() {
 	_durploy_install_desk=$1
-	_durploy_install_from="$(readlink -f "$2")"
-	_durploy_install_to="$(readlink -f "$3")"
+	_durploy_install_pier="$(readlink -f "$2")"
+	_durploy_install_from="$(readlink -f "$3")"
 
-	_durploy__send_hood "$(dirname "$_durploy_install_to")" "|new-desk %$_durploy_install_desk, =hard &"
-	_durploy__send_hood "$(dirname "$_durploy_install_to")" "|mount %$_durploy_install_desk"
+	_durploy__send_hood "$_durploy_install_pier" "|new-desk %$_durploy_install_desk, =hard &"
+	_durploy__send_hood "$_durploy_install_pier" "|mount %$_durploy_install_desk"
 
-	rsync -rcuL "$_durploy_install_from/" "$_durploy_install_to/"
+	rsync -rcuL "$_durploy_install_from/" "$_durploy_install_pier/$_durploy_install_desk/"
 
-	_durploy__send_hood "$(dirname "$_durploy_install_to")" "|commit %$_durploy_install_desk"
-	_durploy__send_hood "$(dirname "$_durploy_install_to")" "|install our %$_durploy_install_desk"
+	_durploy__send_hood "$_durploy_install_pier" "|commit %$_durploy_install_desk"
+	_durploy__send_hood "$_durploy_install_pier" "|install our %$_durploy_install_desk"
 }
 
 _durploy__desk_sync() {
 	_durploy_sync_desk=$1
-	_durploy_sync_from="$(readlink -f "$2")"
-	_durploy_sync_to="$(readlink -f "$3")"
+	_durploy_sync_pier="$(readlink -f "$2")"
+	_durploy_sync_from="$(readlink -f "$3")"
 	_durploy_sync_rstrat=$4
 
-	_durploy_sync_files=$(rsync -in -rcuL "$_durploy_sync_from/" "$_durploy_sync_to/" \
+	_durploy_sync_files=$(rsync -in -rcuL "$_durploy_sync_from/" "$_durploy_sync_pier/$_durploy_sync_desk/" \
 		| awk '{if ($0 == "") exit; else print $2;}'
 	)
 	# TODO: Read the content of `desk.bill`?
@@ -211,7 +212,7 @@ _durploy__desk_sync() {
 	)
 
 	if [ -n "$_durploy_sync_files" ]; then
-		rsync -rcuL "$_durploy_sync_from/" "$_durploy_sync_to/"
+		rsync -rcuL "$_durploy_sync_from/" "$_durploy_sync_pier/$_durploy_sync_desk/"
 
 		_durploy_sync_reloadapps=""
 		for _durploy_sync_app in $_durploy_sync_srcapps; do
@@ -232,11 +233,11 @@ _durploy__desk_sync() {
 		done
 
 		for _durploy_sync_reloadapp in $_durploy_sync_reloadapps; do
-			_durploy__send_hood "$(dirname "$_durploy_sync_to")" "|nuke %$_durploy_sync_reloadapp, =hard &"
+			_durploy__send_hood "$_durploy_sync_pier" "|nuke %$_durploy_sync_reloadapp, =hard &"
 		done
-		_durploy__send_hood "$(dirname "$_durploy_sync_to")" "|commit %$_durploy_sync_desk"
+		_durploy__send_hood "$_durploy_sync_pier" "|commit %$_durploy_sync_desk"
 		for _durploy_sync_reloadapp in $_durploy_sync_reloadapps; do
-			_durploy__send_hood "$(dirname "$_durploy_sync_to")" "|revive %$_durploy_sync_reloadapp"
+			_durploy__send_hood "$_durploy_sync_pier" "|revive %$_durploy_sync_reloadapp"
 		done
 	fi
 }
@@ -261,6 +262,13 @@ durploy__ship() {
 
 	durploy_ship_base=$1; shift
 	[ -z "$durploy_ship_uid" ] && durploy_ship_uid="zod"
+
+	for _durploy_ship_script in "$@"; do
+		# TODO: Substitute in common replacements, e.g. @app-files, @debug-files
+		_durploy_ship_scriptpath="$(readlink -f "$_durploy_ship_script")"
+		[ ! -f "$_durploy_ship_scriptpath" ] && \
+			_durploy__error "provided init script either doesn't exist or can't be run: '$_durploy_ship_script'"
+	done
 
 	if [ "$durploy_command_usecwd" = "true" ]; then
 		durploy_ship_path="$(cwd)/$durploy_ship_base"
@@ -294,6 +302,14 @@ durploy__ship() {
 		# if the backup doesn't exist, copy the new pier into that path
 		if [ -n "$durploy_bkup_path" ] && [ ! -e "$durploy_bkup_path" ]; then
 			cp -r "$durploy_ship_path" "$durploy_bkup_path"
+		else
+			"$durploy_command_binary" -d -L "$durploy_ship_path" >/dev/null 2>&1
+			for _durploy_ship_script in "$@"; do
+				# shellcheck disable=SC1090
+				# . "$(readlink -f "$_durploy_ship_script")"
+				echo "$_durploy_ship_script"
+			done
+			kill -9 "$(pgrep -f "$durploy_command_binary serf $(readlink -f "$durploy_ship_path")")" >/dev/null 2>&1
 		fi
 
 		"$durploy_command_binary" -L "$durploy_ship_path"
@@ -310,44 +326,43 @@ durploy__desk() {
 	esac done
 	_durploy__invalid_pargs_atleast 3 "$@" && _durploy__info "$DURPLOY_HELP_DESK"
 
+	durploy_desk_shipbase=$1; shift
 	durploy_desk_name=$1; shift
 	durploy_desk_codepath=$1; shift
-	durploy_desk_shipbase=$1; shift
 	[ -z "$durploy_desk_iswatching" ] && durploy_desk_iswatching="false"
 	[ -z "$durploy_desk_resetstrat" ] && durploy_desk_resetstrat="never"
 
 	if [ "$durploy_command_usecwd" = "true" ]; then
-		durploy_desk_shippath="$(cwd)/$durploy_desk_shipbase"
+		durploy_desk_pier="$(cwd)/$durploy_desk_shipbase"
 	else
-		durploy_desk_shippath="$DURPLOY_SHIP_DIR/$durploy_desk_shipbase"
+		durploy_desk_pier="$DURPLOY_SHIP_DIR/$durploy_desk_shipbase"
 	fi
-	durploy_desk_shipcodepath="$durploy_desk_shippath/$durploy_desk_name"
 
 	_durploy__invalid_desk "$durploy_desk_name" \
 		&& _durploy__error "invalid desk name '$durploy_desk_name'"
 	[ ! -d "$durploy_desk_codepath" ] \
 		&& _durploy__error "invalid urbit code desk at '$durploy_desk_codepath'"
-	[ ! -d "$durploy_desk_shippath" ] \
-		&& _durploy__error "invalid urbit ship at '$durploy_desk_shippath'"
+	[ ! -d "$durploy_desk_pier" ] \
+		&& _durploy__error "invalid urbit pier at '$durploy_desk_pier'"
 	! echo "$durploy_desk_resetstrat" | grep -q -E "$DURPLOY_RESET_STRATS_REGEX" \
 		&& _durploy__error "invalid reset strategy '$durploy_desk_resetstrat'; try one of '$DURPLOY_RESET_STRATS'"
 
-	if ! _durploy__check_ship_live "$durploy_desk_shippath"; then
+	if ! _durploy__check_ship_live "$durploy_desk_pier"; then
 		_durploy__error "must run ship to deploy desk; please run: durploy ship $durploy_desk_shipbase"
 	fi
 
-	if [ ! -d "$durploy_desk_shipcodepath" ]; then
+	if [ ! -d "$durploy_desk_pier/$durploy_desk_name" ]; then
 		_durploy__desk_install \
 			"$durploy_desk_name" \
-			"$durploy_desk_codepath" \
-			"$durploy_desk_shipcodepath"
+			"$durploy_desk_pier" \
+			"$durploy_desk_codepath"
 	fi
 
 	while : ; do
 		_durploy__desk_sync \
 			"$durploy_desk_name" \
+			"$durploy_desk_pier" \
 			"$durploy_desk_codepath" \
-			"$durploy_desk_shipcodepath" \
 			"$durploy_desk_resetstrat"
 		[ "$durploy_desk_iswatching" = "false" ] && break
 		sleep 2
