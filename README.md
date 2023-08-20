@@ -44,11 +44,17 @@ durploy desk zod my-desk /path/to/my-desk
 durploy desk -w zod my-desk /path/to/my-desk
 ```
 
+### Remove a Development Ship ###
+
+```bash
+durploy nuke zod
+```
+
 ## Configuration ##
 
-This section will be written once `durploy` supports configuration files.
-
-TODO: Write this section
+Most default directory locations and Urbit files used by `durploy` can be
+configured. For more information, see the "Config options" section of the
+documentation output by `durploy --help`.
 
 ## Inspiration/Alternatives ##
 
