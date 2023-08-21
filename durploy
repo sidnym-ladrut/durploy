@@ -150,10 +150,10 @@ _durploy__bp__grab_ship_patp() {
 	fi
 
 	[ "$_durploy_grabpatp_live" = "false" ] && _durploy__bp__start_ship "$@"
-	_durploy_grabpatp_spatp="$(_durploy__p__send_dojo "$2" "our")"
+	_durploy_grabpatp_spatp="$(_durploy__p__send_dojo "$2" "our" | sed 's/^~//')"
 	[ "$_durploy_grabpatp_live" = "false" ] && _durploy__bp__stop_ship "$@"
 
-	echo "$_durploy_grabpatp_spatp" | sed 's/^~//'
+	echo "$_durploy_grabpatp_spatp"
 }
 
 _durploy__bp__check_pier_path() {
@@ -355,10 +355,28 @@ durploy__ship() {
 
 		if [ "$durploy_ship_runcmds" = "true" ] && [ "0" != "$#" ]; then
 			_durploy__bp__start_ship "$durploy_ship_bin" "$durploy_ship_pier"
+
+			# create aliases for common commands to allow shell scripts to be more terse
+			# shellcheck disable=SC2013
+			for _durploy_ship_func in $(awk '/^_durploy__.+__/ {print substr($1, 1, length($1)-2);}' < "$0"); do
+				_durploy_ship_idargs=$(echo "$_durploy_ship_func" | sed -re 's/_durploy__(.+)__.*/\1/')
+				_durploy_ship_rlargs=""
+				for _durploy_ship_arg in $(echo "$_durploy_ship_idargs" | sed -re 's/(.)/\1\n/g'); do
+					if [ "$_durploy_ship_arg" = "b" ]; then
+						_durploy_ship_rlargs="$_durploy_ship_rlargs $durploy_ship_bin"
+					elif [ "$_durploy_ship_arg" = "p" ]; then
+						_durploy_ship_rlargs="$_durploy_ship_rlargs $durploy_ship_pier"
+					fi
+				done
+				_durploy_ship_alias=$(echo "$_durploy_ship_func" | sed -re 's/_durploy__.+__(.*)/\1/')
+				eval "function $_durploy_ship_alias() { $_durploy_ship_func $_durploy_ship_rlargs \"\$@\"; }"
+			done
 			for _durploy_ship_script in "$@"; do
 				# shellcheck disable=SC1090
 				. "$(readlink -f "$_durploy_ship_script")"
 			done
+			# TODO: Tear down all of the command alises...?
+
 			_durploy__bp__stop_ship "$durploy_ship_bin" "$durploy_ship_pier"
 		fi
 
@@ -481,6 +499,6 @@ durploy() {
 # if invoked as a script rather than sourced, call function named on argv via the below;
 # note that this must be the first operation other than a function definition
 # for $_ to successfully distinguish between sourcing and invocation:
-# [ ! "$_" -eq "$0" ] && return
+# [ "$_" != "$0" ] && return
 
 durploy "$@"
