@@ -5,14 +5,10 @@
 # TODO: Handle cases when 'urbit' is not installed on the host system
 # (allow users to download the latest binary for their system, managed
 # by the local config in e.g. ~/.local/share/durploy/binaries)
-# TODO: Improve cliarg parsing by allowing for '--' delimiters between
-# flag args and positional args for each command
-# FIXME: Pass top-level configuration instead of using global-esque variables
-# (e.g. for all "$durploy_command_*" variables).
 
 ## Constants ##
 
-DURPLOY_VERSION="0.0.6"
+DURPLOY_VERSION="0.0.7"
 DURPLOY_HELP_FOOTER="
 Report bugs to: ~sidnym-ladrut
 durploy home page: <https://github.com/sidnym-ladrut/durploy>"
@@ -39,7 +35,7 @@ Config options (via environment variables or sh config file):
   DURPLOY_CACHE_DIR: Path for storing cache files, e.g. git repos (default: \$XDG_CACHE_HOME/durploy/cache)
   DURPLOY_URBIT_BIN: Path to default Urbit binary (default: \$(which urbit))
 $DURPLOY_HELP_FOOTER"
-DURPLOY_HELP_SHIP="usage: durploy ship [-u | --uid <ship-uid>] [-n | --nuke <level>]
+DURPLOY_HELP_SHIP="usage: durploy ship [-p | --patp <ship-patp>] [-n | --nuke <level>]
                       <ship-path> [<boot-script> ...]
 Generate and run Urbit ships (w/ optional boot script(s))
 
@@ -48,7 +44,7 @@ Positional arguments:
   boot-script: The file path for the boot script (e.g. /path/to/init.sh)
 
 Flag arguments:
-  -u, --uid: The Urbit ID of the ship to be deployed at the given path
+  -p, --patp: The @p (i.e. Urbit ID) of the ship to be deployed at the given path
     (default: zod)
   -n, --nuke: Run nuke with given severity prior to deployment; one of:
     2: Nuke both pier and backup; start ship from a clean slate
@@ -93,11 +89,6 @@ DURPLOY_RESET_STRATS_REGEX=$(printf "(%s)|" $DURPLOY_RESET_STRATS \
 
 ## Config Variables ##
 
-_durploy__info() { echo "[INFO]: $1" && exit 1; }
-_durploy__error() { echo "[ERROR]: $1" && exit 1; }
-_durploy__invalid_pargs_exact() { [ "$(($1+1))" != "$#" ]; }
-_durploy__invalid_pargs_atleast() { [ "$(($1+1))" -gt "$#" ]; }
-
 DURPLOY_CONFIG_FILE="${DURPLOY_CONFIG_FILE:-${XDG_CONFIG_HOME:-~/.config}/durploy/durployrc}"
 # shellcheck disable=SC1090
 [ -f "$DURPLOY_CONFIG_FILE" ] && . "$DURPLOY_CONFIG_FILE"
@@ -107,29 +98,19 @@ DURPLOY_BACKUP_DIR="${DURPLOY_BACKUP_DIR:-${XDG_CACHE_HOME:-~/.cache}/durploy/ba
 DURPLOY_CACHE_DIR="${DURPLOY_CACHE_DIR:-${XDG_CACHE_HOME:-~/.cache}/durploy/cache}"
 DURPLOY_URBIT_BIN="${DURPLOY_URBIT_BIN:-$(which urbit)}"
 
-for _durploy_dir in "$DURPLOY_SHIP_DIR" "$DURPLOY_BACKUP_DIR" "$DURPLOY_CACHE_DIR"; do
-	if [ ! -d "$_durploy_dir" ]; then
-		mkdir -p "$_durploy_dir" || \
-			_durploy__error "couldn't create config directory at path '$_durploy_dir'"
-	fi
-done
-[ ! -x "$DURPLOY_URBIT_BIN" ] && \
-	_durploy__error "couldn't find default vere binary at path '$DURPLOY_URBIT_BIN'"
-
 ## Helper Functions ##
 
-_durploy__remove() {
-	echo "removing $1" && rm -rIv "$1"
-}
+_durploy__info() { echo "[INFO]: $1" && exit 1; }
+_durploy__error() { echo "[ERROR]: $1" && exit 1; }
+_durploy__invalid_pargs_exact() { [ "$(($1+1))" != "$#" ]; }
+_durploy__invalid_pargs_atleast() { [ "$(($1+1))" -gt "$#" ]; }
+_durploy__remove() { echo "removing $1" && rm -rIv "$1"; }
 
-_durploy__invalid_ship() {
-	echo "(scan \"$1\" fed:ag)" | "$durploy_command_binary" eval 2>&1 | grep -q "bail: %exit"
-}
-_durploy__invalid_desk() {
-	echo "(scan \"$1\" sym)" | "$durploy_command_binary" eval 2>&1 | grep -q "bail: %exit"
-}
+_durploy__b__invalid_patp() { echo "(scan \"$2\" fed:ag)" | "$1" eval 2>&1 | grep -q "bail: %exit"; }
+_durploy__b__invalid_desk() { echo "(scan \"$2\" sym)" | "$1" eval 2>&1 | grep -q "bail: %exit"; }
+_durploy__b__hash_config() { sha256sum -b "$1" | awk '{print $1;}'; }
 
-_durploy__send_dojo() {
+_durploy__p__send_dojo() {
 	_durploy_senddojo_pier=$1
 	_durploy_senddojo_cmddojo=$2
 	_durploy_senddojo_cmdapp=$3
@@ -147,71 +128,69 @@ _durploy__send_dojo() {
 		"http://127.0.0.1:$_durploy_senddojo_shipport" \
 		| xargs printf %s | sed 's/\\n/\n/g'
 }
-_durploy__send_hood() {
-	_durploy__send_dojo "$1" "$(echo "$2" | sed 's/^|/+hood\//')" "hood"
+_durploy__p__send_hood() {
+	_durploy__p__send_dojo "$1" "$(echo "$2" | sed 's/^|/+hood\//')" "hood"
 }
 
-_durploy__start_ship() {
-	"$durploy_command_binary" -d -L "$1" >/dev/null 2>&1
+_durploy__bp__start_ship() {
+	"$1" -d -L "$2" >/dev/null 2>&1
 }
-_durploy__kill_ship() {
-	kill -9 "$(pgrep -f "$durploy_command_binary serf $(readlink -f "$1")")" >/dev/null 2>&1
+_durploy__bp__stop_ship() {
+	kill -9 "$(pgrep -f "$1 serf $(readlink -f "$2")")" >/dev/null 2>&1
 }
-_durploy__islive_ship() {
-	pgrep -f "$durploy_command_binary serf $(readlink -f "$1")" | grep -q -v "grep"
+_durploy__bp__islive_ship() {
+	pgrep -f "$1 serf $(readlink -f "$2")" | grep -q -v "grep"
 }
 
-_durploy__grab_ship_uid() {
-	_durploy_grabuid_path=$1
-
-	if _durploy__islive_ship "$_durploy_grabuid_path"; then
-		_durploy_grabuid_live="true"
+_durploy__bp__grab_ship_patp() {
+	if _durploy__bp__islive_ship "$@"; then
+		_durploy_grabpatp_live="true"
 	else
-		_durploy_grabuid_live="false"
+		_durploy_grabpatp_live="false"
 	fi
 
-	[ "$_durploy_grabuid_live" = "false" ] && _durploy__start_ship "$_durploy_grabuid_path"
-	_durploy_grabuid_suid="$(_durploy__send_dojo "$_durploy_grabuid_path" "our")"
-	[ "$_durploy_grabuid_live" = "false" ] && _durploy__kill_ship "$_durploy_grabuid_path"
+	[ "$_durploy_grabpatp_live" = "false" ] && _durploy__bp__start_ship "$@"
+	_durploy_grabpatp_spatp="$(_durploy__p__send_dojo "$2" "our")"
+	[ "$_durploy_grabpatp_live" = "false" ] && _durploy__bp__stop_ship "$@"
 
-	echo "$_durploy_grabuid_suid" | sed 's/^~//'
+	echo "$_durploy_grabpatp_spatp" | sed 's/^~//'
 }
 
-_durploy__check_pier_path() {
-	_durploy_checkpier_path=$1
-	_durploy_checkpier_uid=$2
+_durploy__bp__check_pier_path() {
+	_durploy_checkpier_bin=$1
+	_durploy_checkpier_path=$2
+	_durploy_checkpier_patp=$3
 
-	_durploy__invalid_ship "$_durploy_checkpier_uid" \
-		&& _durploy__error "invalid ship name '$_durploy_checkpier_uid'"
+	_durploy__b__invalid_patp "$_durploy_checkpier_bin" "$_durploy_checkpier_patp" \
+		&& _durploy__error "invalid ship name '$_durploy_checkpier_patp'"
 	if [ ! -e "$_durploy_checkpier_path" ]; then
 		mkdir -p "$(dirname "$_durploy_checkpier_path")" \
 			|| _durploy__error "couldn't create directory at path '$_durploy_checkpier_path'"
 	elif [ ! -d "$_durploy_checkpier_path" ]; then
 		_durploy__error "invalid artifact exists at path '$_durploy_checkpier_path'"
 	else
-		_durploy_checkpier_rid="$(_durploy__grab_ship_uid "$_durploy_checkpier_path")"
-		if [ "$_durploy_checkpier_rid" != "$_durploy_checkpier_uid" ]; then
-			_durploy__error \
-				"invalid pier for '$_durploy_checkpier_uid' at '$_durploy_checkpier_path' (pier @p: '$_durploy_checkpier_rid')"
+		_durploy_checkpier_rid="$(_durploy__bp__grab_ship_patp "$_durploy_checkpier_bin" "$_durploy_checkpier_path")"
+		if [ "$_durploy_checkpier_rid" != "$_durploy_checkpier_patp" ]; then
+			_durploy__error "bad @p '$_durploy_checkpier_patp' for '$_durploy_checkpier_path' (pier @p: '$_durploy_checkpier_rid')"
 		fi
 	fi
 }
 
-_durploy__desk_init() {
-	_durploy_init_desk=$1
-	_durploy_init_pier="$(readlink -f "$2")"
-	_durploy__send_hood "$_durploy_init_pier" "|new-desk %$_durploy_init_desk, =hard &"
-	_durploy__send_hood "$_durploy_init_pier" "|mount %$_durploy_init_desk"
+_durploy__p__desk_init() {
+	_durploy_init_pier="$(readlink -f "$1")"
+	_durploy_init_desk=$2
+	_durploy__p__send_hood "$_durploy_init_pier" "|new-desk %$_durploy_init_desk, =hard &"
+	_durploy__p__send_hood "$_durploy_init_pier" "|mount %$_durploy_init_desk"
 }
-_durploy__desk_cdir() {
-	_durploy_copydir_desk=$1
-	_durploy_copydir_pier="$(readlink -f "$2")"
+_durploy__p__desk_cpdir() {
+	_durploy_copydir_pier="$(readlink -f "$1")"
+	_durploy_copydir_desk=$2
 	_durploy_copydir_from="$(readlink -f "$3")"
 	rsync -rcuL "$_durploy_copydir_from/" "$_durploy_copydir_pier/$_durploy_copydir_desk/"
 }
-_durploy__desk_cgit() {
-	_durploy_copygit_desk=$1; shift
+_durploy__p__desk_cpgit() {
 	_durploy_copygit_pier="$(readlink -f "$1")"; shift
+	_durploy_copygit_desk=$1; shift
 	_durploy_copygit_repo=$1; shift
 	_durploy_copygit_hash=$1; shift
 
@@ -241,26 +220,26 @@ _durploy__desk_cgit() {
 		rsync -rcuL "$_durploy_copygit_frompath" "$_durploy_copygit_destpath"
 	done
 }
-_durploy__desk_wrap() {
-	_durploy_wrap_desk=$1
-	_durploy_wrap_pier="$(readlink -f "$2")"
-	_durploy__send_hood "$_durploy_wrap_pier" "|commit %$_durploy_wrap_desk"
-	_durploy__send_hood "$_durploy_wrap_pier" "|install our %$_durploy_wrap_desk"
+_durploy__p__desk_inst() {
+	_durploy_inst_pier="$(readlink -f "$1")"
+	_durploy_inst_desk=$2
+	_durploy__p__send_hood "$_durploy_inst_pier" "|commit %$_durploy_inst_desk"
+	_durploy__p__send_hood "$_durploy_inst_pier" "|install our %$_durploy_inst_desk"
 }
 
-_durploy__desk_install() {
-	_durploy_install_desk=$1
-	_durploy_install_pier="$(readlink -f "$2")"
+_durploy__p__desk_install() {
+	_durploy_install_pier="$(readlink -f "$1")"
+	_durploy_install_desk=$2
 	_durploy_install_from="$(readlink -f "$3")"
 
-	_durploy__desk_init "$_durploy_install_desk" "$_durploy_install_pier"
-	_durploy__desk_cdir "$_durploy_install_from" "$_durploy_install_pier" "$_durploy_install_from"
-	_durploy__desk_wrap "$_durploy_install_desk" "$_durploy_install_pier"
+	_durploy__p__desk_init "$_durploy_install_pier" "$_durploy_install_desk"
+	_durploy__p__desk_cpdir "$_durploy_install_pier" "$_durploy_install_desk" "$_durploy_install_from"
+	_durploy__p__desk_inst "$_durploy_install_pier" "$_durploy_install_desk"
 }
 
-_durploy__desk_sync() {
-	_durploy_sync_desk=$1
-	_durploy_sync_pier="$(readlink -f "$2")"
+_durploy__p__desk_sync() {
+	_durploy_sync_pier="$(readlink -f "$1")"
+	_durploy_sync_desk=$2
 	_durploy_sync_from="$(readlink -f "$3")"
 	_durploy_sync_rstrat=$4
 
@@ -302,25 +281,27 @@ _durploy__desk_sync() {
 		done
 
 		for _durploy_sync_reloadapp in $_durploy_sync_reloadapps; do
-			_durploy__send_hood "$_durploy_sync_pier" "|nuke %$_durploy_sync_reloadapp, =hard &"
+			_durploy__p__send_hood "$_durploy_sync_pier" "|nuke %$_durploy_sync_reloadapp, =hard &"
 		done
-		_durploy__send_hood "$_durploy_sync_pier" "|commit %$_durploy_sync_desk"
+		_durploy__p__send_hood "$_durploy_sync_pier" "|commit %$_durploy_sync_desk"
 		for _durploy_sync_reloadapp in $_durploy_sync_reloadapps; do
-			_durploy__send_hood "$_durploy_sync_pier" "|revive %$_durploy_sync_reloadapp"
+			_durploy__p__send_hood "$_durploy_sync_pier" "|revive %$_durploy_sync_reloadapp"
 		done
 	fi
 }
 
-_durploy__hash_config() {
-	sha256sum -b "$durploy_command_binary" | awk '{print $1;}'
-}
-
 ## Sub-Commands ##
 
+# NOTE: All subcommands take the `durploy` base command arguments as their first
+# set of args, e.g.:
+#
+#   durploy__command /path/to/urbit/bin ...
+
 durploy__ship() {
+	durploy_ship_bin=$1; shift
 	while : ; do case $1 in
 		-h | --help) printf "%s\\n" "$DURPLOY_HELP_SHIP" && exit 1 ;;
-		-u | --uid) durploy_ship_uid=$2 && shift 2 ;;
+		-p | --patp) durploy_ship_patp=$2 && shift 2 ;;
 		-n | --nuke) durploy_ship_nukelevel=$2 && shift 2 ;;
 		-*) printf "invalid option: %s\\n" "$1" && exit 1 ;;
 		*) break ;;
@@ -328,7 +309,7 @@ durploy__ship() {
 	_durploy__invalid_pargs_atleast 1 "$@" && _durploy__info "$DURPLOY_HELP_SHIP"
 
 	durploy_ship_base=$1; shift
-	[ -z "$durploy_ship_uid" ] && durploy_ship_uid="zod"
+	[ -z "$durploy_ship_patp" ] && durploy_ship_patp="zod"
 	[ -z "$durploy_ship_nukelevel" ] && durploy_ship_nukelevel="0"
 
 	for _durploy_ship_script in "$@"; do
@@ -337,14 +318,15 @@ durploy__ship() {
 			_durploy__error "provided init script either doesn't exist or can't be run: '$_durploy_ship_script'"
 	done
 	durploy_ship_pier="$DURPLOY_SHIP_DIR/$durploy_ship_base"
-	durploy_ship_bkup="$DURPLOY_BACKUP_DIR/$durploy_ship_uid-$(_durploy__hash_config)"
+	durploy_ship_bkup="$DURPLOY_BACKUP_DIR/$durploy_ship_patp-$(_durploy__b__hash_config "$durploy_ship_bin")"
 
-	if _durploy__islive_ship "$durploy_ship_pier"; then
+	if _durploy__bp__islive_ship "$durploy_ship_bin" "$durploy_ship_pier"; then
 		_durploy__info "urbit ship '$durploy_ship_base' is already running"
 	else
-		[ "$durploy_ship_nukelevel" -gt "0" ] && durploy__nuke -l "$durploy_ship_nukelevel" "$durploy_ship_base"
-		_durploy__check_pier_path "$durploy_ship_pier" "$durploy_ship_uid"
-		_durploy__check_pier_path "$durploy_ship_bkup" "$durploy_ship_uid"
+		[ "$durploy_ship_nukelevel" -gt "0" ] && \
+			durploy__nuke "$durploy_ship_bin" -l "$durploy_ship_nukelevel" "$durploy_ship_base"
+		_durploy__bp__check_pier_path "$durploy_ship_bin" "$durploy_ship_pier" "$durploy_ship_patp"
+		_durploy__bp__check_pier_path "$durploy_ship_bin" "$durploy_ship_bkup" "$durploy_ship_patp"
 
 		# TODO: Allow users to discard bad backups when they're detected
 
@@ -352,39 +334,40 @@ durploy__ship() {
 		if [ ! -e "$durploy_ship_pier" ]; then
 			durploy_ship_runcmds="true"
 			# if the backup exists and is valid, then copy it to the new pier path
-			if [ -d "$durploy_ship_bkup" ] && "$durploy_command_binary" -t -x -L "$durploy_ship_bkup"; then
+			if [ -d "$durploy_ship_bkup" ] && "$durploy_ship_bin" -t -x -L "$durploy_ship_bkup"; then
 				cp -r "$durploy_ship_bkup" "$durploy_ship_pier"
 			# otherwise, attempt to create a new pier for the ship
-			elif "$durploy_command_binary" -t -x -L -c "$durploy_ship_pier" -F "$durploy_ship_uid"; then
+			elif "$durploy_ship_bin" -t -x -L -c "$durploy_ship_pier" -F "$durploy_ship_patp"; then
 				[ ! -e "$durploy_ship_bkup" ] && cp -r "$durploy_ship_pier" "$durploy_ship_bkup"
 			# if creating the new ship failed, then error out
 			else
-				_durploy__error "couldn't create ship '$durploy_ship_uid' at '$durploy_ship_pier'"
+				_durploy__error "couldn't create ship '$durploy_ship_patp' at '$durploy_ship_pier'"
 			fi
 		# else, attempt to boot the urbit and immediately exit
 		else
 			durploy_ship_runcmds="false"
-			if "$durploy_command_binary" -t -x -L "$durploy_ship_pier"; then
+			if "$durploy_ship_bin" -t -x -L "$durploy_ship_pier"; then
 				[ ! -e "$durploy_ship_bkup" ] && cp -r "$durploy_ship_pier" "$durploy_ship_bkup"
 			else
-				_durploy__error "couldn't revive ship '$durploy_ship_uid' at '$durploy_ship_pier'"
+				_durploy__error "couldn't revive ship '$durploy_ship_patp' at '$durploy_ship_pier'"
 			fi
 		fi
 
 		if [ "$durploy_ship_runcmds" = "true" ] && [ "0" != "$#" ]; then
-			_durploy__start_ship "$durploy_ship_pier"
+			_durploy__bp__start_ship "$durploy_ship_bin" "$durploy_ship_pier"
 			for _durploy_ship_script in "$@"; do
 				# shellcheck disable=SC1090
 				. "$(readlink -f "$_durploy_ship_script")"
 			done
-			_durploy__kill_ship "$durploy_ship_pier"
+			_durploy__bp__stop_ship "$durploy_ship_bin" "$durploy_ship_pier"
 		fi
 
-		"$durploy_command_binary" -L "$durploy_ship_pier"
+		"$durploy_ship_bin" -L "$durploy_ship_pier"
 	fi
 }
 
 durploy__desk() {
+	durploy_desk_bin=$1; shift
 	while : ; do case $1 in
 		-h | --help) printf "%s\\n" "$DURPLOY_HELP_DESK" && exit 1 ;;
 		-w | --watch) durploy_desk_iswatching="true" && shift 1 ;;
@@ -401,7 +384,7 @@ durploy__desk() {
 	[ -z "$durploy_desk_resetstrat" ] && durploy_desk_resetstrat="never"
 	durploy_desk_pier="$DURPLOY_SHIP_DIR/$durploy_desk_shipbase"
 
-	_durploy__invalid_desk "$durploy_desk_name" \
+	_durploy__b__invalid_desk "$durploy_desk_bin" "$durploy_desk_name" \
 		&& _durploy__error "invalid desk name '$durploy_desk_name'"
 	[ ! -d "$durploy_desk_codepath" ] \
 		&& _durploy__error "invalid urbit code desk at '$durploy_desk_codepath'"
@@ -410,21 +393,21 @@ durploy__desk() {
 	! echo "$durploy_desk_resetstrat" | grep -q -E "$DURPLOY_RESET_STRATS_REGEX" \
 		&& _durploy__error "invalid reset strategy '$durploy_desk_resetstrat'; try one of '$DURPLOY_RESET_STRATS'"
 
-	if ! _durploy__islive_ship "$durploy_desk_pier"; then
+	if ! _durploy__bp__islive_ship "$durploy_desk_bin" "$durploy_desk_pier"; then
 		_durploy__error "must run ship to deploy desk; please run: durploy ship $durploy_desk_shipbase"
 	fi
 
 	if [ ! -d "$durploy_desk_pier/$durploy_desk_name" ]; then
-		_durploy__desk_install \
-			"$durploy_desk_name" \
+		_durploy__p__desk_install \
 			"$durploy_desk_pier" \
+			"$durploy_desk_name" \
 			"$durploy_desk_codepath"
 	fi
 
 	while : ; do
-		_durploy__desk_sync \
-			"$durploy_desk_name" \
+		_durploy__p__desk_sync \
 			"$durploy_desk_pier" \
+			"$durploy_desk_name" \
 			"$durploy_desk_codepath" \
 			"$durploy_desk_resetstrat"
 		[ "$durploy_desk_iswatching" = "false" ] && break
@@ -433,6 +416,9 @@ durploy__desk() {
 }
 
 durploy__nuke() {
+	# TODO: Consider making this a more general command to clear out cache information
+	# (e.g. not only ships and backups, but old Git libraries, binaries, etc.)
+	durploy_nuke_bin=$1; shift
 	while : ; do case $1 in
 		-h | --help) printf "%s\\n" "$DURPLOY_HELP_NUKE" && exit 1 ;;
 		-l | --level) durploy_nuke_level=$2 && shift 2 ;;
@@ -446,9 +432,10 @@ durploy__nuke() {
 
 	durploy_nuke_pier="$DURPLOY_SHIP_DIR/$durploy_nuke_base"
 	[ "$durploy_nuke_level" -gt "1" ] && \
-		durploy_nuke_bkup="$DURPLOY_BACKUP_DIR/$(_durploy__grab_ship_uid "$durploy_nuke_base")-$(_durploy__hash_config)"
+		durploy_nuke_bkup="$DURPLOY_BACKUP_DIR/$(_durploy__bp__grab_ship_patp \
+			"$durploy_nuke_bin" "$durploy_nuke_base")-$(_durploy__b__hash_config "$durploy_nuke_bin")"
 
-	if _durploy__islive_ship "$durploy_nuke_pier"; then
+	if _durploy__bp__islive_ship "$durploy_nuke_bin" "$durploy_nuke_pier"; then
 		_durploy__error "cannot nuke running ship '$durploy_nuke_pier'"
 	fi
 
@@ -473,7 +460,16 @@ durploy() {
 	durploy_command_binary="$(readlink -f "$durploy_command_binary")"
 
 	if type "durploy__$durploy_command_name" >/dev/null 2>&1; then
-		"durploy__$durploy_command_name" "$@"
+		[ ! -x "$durploy_command_binary" ] && \
+			_durploy__error "couldn't find default vere binary at path '$durploy_command_binary'"
+		for _durploy_dir in "$DURPLOY_SHIP_DIR" "$DURPLOY_BACKUP_DIR" "$DURPLOY_CACHE_DIR"; do
+			if [ ! -d "$_durploy_dir" ]; then
+				mkdir -p "$_durploy_dir" || \
+					_durploy__error "couldn't create config directory at path '$_durploy_dir'"
+			fi
+		done
+
+		"durploy__$durploy_command_name" "$durploy_command_binary" "$@"
 	else
 		_durploy__error "invalid command name '$durploy_command_name'"
 	fi
