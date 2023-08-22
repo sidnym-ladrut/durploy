@@ -1,13 +1,13 @@
 # `durploy`: D(e)ploy Ur(bit) #
 
-`durploy` is a Bash utility for deploying and managing Urbit ships and desks.
+`durploy` is a shell utility for deploying and managing Urbit ships and desks.
 More specifically, it's wrapper script for all the common Urbit workflows found
 on the [Urbit website], particularly those enumerated in [Urbit "Environment
 Setup"] and [Urbit "Software Distribution"].
 
 ## Installation ##
 
-`durploy` is written in Bash and thus should run on most \*NIX platforms.
+`durploy` is written in [Bourne Shell] and thus should run on most \*NIX platforms.
 Presently, it has only been tested on Linux; your mileage may vary! Please
 review the ["Dependencies"](#dependencies) section below if you encounter any
 issues with missing commands.
@@ -82,7 +82,6 @@ This list is ordered roughly in descending order of expected availability:
 
 - [`which`](https://linux.die.net/man/1/which)
 - [`git`](https://www.man7.org/linux/man-pages/man1/git.1.html)
-- [`bash`](https://www.man7.org/linux/man-pages/man1/bash.1.html)
 - [`rsync`](https://www.man7.org/linux/man-pages/man1/rsync.1.html)
 - [`curl`](https://www.man7.org/linux/man-pages/man1/curl.1.html)
 - [`pgrep`](https://www.man7.org/linux/man-pages/man1/pgrep.1.html)
@@ -90,6 +89,7 @@ This list is ordered roughly in descending order of expected availability:
 - [`find`](https://www.man7.org/linux/man-pages/man1/find.1p.html)
 - [`xargs`](https://www.man7.org/linux/man-pages/man1/xargs.1p.html)
 - [`sha256sum`](https://www.man7.org/linux/man-pages/man1/sha256sum.1.html)
+- [`sh`](https://www.man7.org/linux/man-pages/man1/sh.1p.html)
 - [`mkdir`](https://www.man7.org/linux/man-pages/man1/mkdir.1p.html)
 - [`awk`](https://www.man7.org/linux/man-pages/man1/awk.1p.html)
 - [`sed`](https://www.man7.org/linux/man-pages/man1/sed.1p.html)
@@ -102,6 +102,7 @@ This list is ordered roughly in descending order of expected availability:
 - [`kill`](https://www.man7.org/linux/man-pages/man1/kill.1.html)
 
 
+[Bourne Shell]: https://en.wikipedia.org/wiki/Bourne_shell
 [Urbit website]: https://developers.urbit.org/
 [Urbit "Environment Setup"]: https://developers.urbit.org/guides/core/environment
 [Urbit "Software Distribution"]: https://developers.urbit.org/guides/additional/software-distribution

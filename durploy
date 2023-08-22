@@ -5,6 +5,9 @@
 # TODO: Handle cases when 'urbit' is not installed on the host system
 # (allow users to download the latest binary for their system, managed
 # by the local config in e.g. ~/.local/share/durploy/binaries)
+# TODO: Add test script to test the validity of a script without actually
+# copying Urbit files.
+# TODO: In `durploy__ship`, terminate the ship if any errors occur during setup.
 
 ## Constants ##
 
@@ -102,9 +105,13 @@ DURPLOY_URBIT_BIN="${DURPLOY_URBIT_BIN:-$(which urbit)}"
 
 _durploy__info() { echo "[INFO]: $1" && exit 1; }
 _durploy__error() { echo "[ERROR]: $1" && exit 1; }
+_durploy__remove() { echo "removing $1" && rm -rIv "$1"; }
 _durploy__invalid_pargs_exact() { [ "$(($1+1))" != "$#" ]; }
 _durploy__invalid_pargs_atleast() { [ "$(($1+1))" -gt "$#" ]; }
-_durploy__remove() { echo "removing $1" && rm -rIv "$1"; }
+_durploy__invalid_git_repo() { [ "$(git -C "$1" rev-parse --show-toplevel)" != "$(readlink -f "$1")" ]; }
+_durploy__invalid_git_remote() {
+	[ "$(git -C "$1" remote -v | awk '/^origin.*\(fetch\)$/ {print $2;}')" != "$2" ]
+}
 
 _durploy__b__invalid_patp() { echo "(scan \"$2\" fed:ag)" | "$1" eval 2>&1 | grep -q "bail: %exit"; }
 _durploy__b__invalid_desk() { echo "(scan \"$2\" sym)" | "$1" eval 2>&1 | grep -q "bail: %exit"; }
@@ -197,15 +204,17 @@ _durploy__p__desk_cpgit() {
 	_durploy_copygit_repopath="$DURPLOY_CACHE_DIR/$(echo "$_durploy_copygit_repo" | sed -re 's|.*/(.+)\.git|\1|g')"
 	if [ ! -d "$_durploy_copygit_repopath" ]; then
 		git clone "$_durploy_copygit_repo" "$_durploy_copygit_repopath"
-	else
-		# TODO: Verify that this is a git repository with the proper remote, i.e. "$_durploy_copygit_repo"
-		:
+	elif _durploy__invalid_git_repo "$_durploy_copygit_repopath"; then
+		git -C "$_durploy_copygit_repopath" rev-parse --show-toplevel
+		echo "$(readlink -f "$_durploy_copygit_repopath")"
+		_durploy__error "invalid git repository at saved repo path '$_durploy_copygit_repopath'"
+	elif _durploy__invalid_git_remote "$_durploy_copygit_repopath" "$_durploy_copygit_repo"; then
+		_durploy__error "git repo at '$_durploy_copygit_repopath' has wrong remote; should be '$_durploy_copygit_repo'"
 	fi
-	if [ -n "$_durploy_copygit_hash" ]; then
-		# TODO: Checkout the specified version
-		# git -C "$_durploy_copygit_repopath" checkout $(git describe --tags $(git rev-list --tags --max-count=1))
-		:
-	fi
+
+	[ -z "$_durploy_copygit_hash" ] && \
+		_durploy_copygit_hash="$(git -C "$_durploy_copygit_repopath" remote show origin | grep "HEAD branch" | sed 's/.*: //')"
+	git -C "$_durploy_copygit_repopath" checkout "$_durploy_copygit_hash"
 
 	for _durploy_copygit_pair in "$@"; do
 		_durploy_copygit_from=""
@@ -293,9 +302,7 @@ _durploy__p__desk_sync() {
 ## Sub-Commands ##
 
 # NOTE: All subcommands take the `durploy` base command arguments as their first
-# set of args, e.g.:
-#
-#   durploy__command /path/to/urbit/bin ...
+# set of args, e.g.: durploy__command /path/to/urbit/bin ...
 
 durploy__ship() {
 	durploy_ship_bin=$1; shift
@@ -359,6 +366,7 @@ durploy__ship() {
 			# create aliases for common commands to allow shell scripts to be more terse
 			# shellcheck disable=SC2013
 			for _durploy_ship_func in $(awk '/^_durploy__.+__/ {print substr($1, 1, length($1)-2);}' < "$0"); do
+				_durploy_ship_alias=$(echo "$_durploy_ship_func" | sed -re 's/_durploy__.+__(.*)/\1/')
 				_durploy_ship_idargs=$(echo "$_durploy_ship_func" | sed -re 's/_durploy__(.+)__.*/\1/')
 				_durploy_ship_rlargs=""
 				for _durploy_ship_arg in $(echo "$_durploy_ship_idargs" | sed -re 's/(.)/\1\n/g'); do
@@ -368,14 +376,17 @@ durploy__ship() {
 						_durploy_ship_rlargs="$_durploy_ship_rlargs $durploy_ship_pier"
 					fi
 				done
-				_durploy_ship_alias=$(echo "$_durploy_ship_func" | sed -re 's/_durploy__.+__(.*)/\1/')
 				eval "function $_durploy_ship_alias() { $_durploy_ship_func $_durploy_ship_rlargs \"\$@\"; }"
 			done
 			for _durploy_ship_script in "$@"; do
 				# shellcheck disable=SC1090
 				. "$(readlink -f "$_durploy_ship_script")"
 			done
-			# TODO: Tear down all of the command alises...?
+			# shellcheck disable=SC2013
+			for _durploy_ship_func in $(awk '/^_durploy__.+__/ {print substr($1, 1, length($1)-2);}' < "$0"); do
+				_durploy_ship_alias=$(echo "$_durploy_ship_func" | sed -re 's/_durploy__.+__(.*)/\1/')
+				unset -f "$_durploy_ship_alias"
+			done
 
 			_durploy__bp__stop_ship "$durploy_ship_bin" "$durploy_ship_pier"
 		fi
@@ -493,6 +504,7 @@ durploy() {
 	fi
 }
 
+# source: https://stackoverflow.com/a/37257634
 # if the functions above are sourced into an interactive interpreter, the user can
 # just call "durploy ship" or "durploy desk" with no further code needed.
 
