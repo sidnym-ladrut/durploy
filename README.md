@@ -35,13 +35,13 @@ durploy ship zod
 ### Synchronize a Desk to a Running Ship ###
 
 ```bash
-durploy desk zod my-desk /path/to/my-desk
+durploy desk zod my-desk /path/to/my-desk/*
 ```
 
 ### Continually Deploy a Desk to a Running Ship ###
 
 ```bash
-durploy desk -w zod my-desk /path/to/my-desk
+durploy desk -w zod my-desk /path/to/my-desk/*
 ```
 
 ### Remove a Development Ship ###
@@ -80,15 +80,14 @@ should be readily available to install on most modern \*NIX systems.
 
 This list is ordered roughly in descending order of expected availability:
 
-- [`which`](https://linux.die.net/man/1/which)
 - [`git`](https://www.man7.org/linux/man-pages/man1/git.1.html)
-- [`rsync`](https://www.man7.org/linux/man-pages/man1/rsync.1.html)
 - [`curl`](https://www.man7.org/linux/man-pages/man1/curl.1.html)
 - [`pgrep`](https://www.man7.org/linux/man-pages/man1/pgrep.1.html)
+- [`which`](https://linux.die.net/man/1/which)
 - [`readlink`](https://www.man7.org/linux/man-pages/man1/readlink.1.html)
-- [`find`](https://www.man7.org/linux/man-pages/man1/find.1p.html)
 - [`xargs`](https://www.man7.org/linux/man-pages/man1/xargs.1p.html)
 - [`sha256sum`](https://www.man7.org/linux/man-pages/man1/sha256sum.1.html)
+- [`touch`](https://www.man7.org/linux/man-pages/man1/touch.1.html)
 - [`sh`](https://www.man7.org/linux/man-pages/man1/sh.1p.html)
 - [`mkdir`](https://www.man7.org/linux/man-pages/man1/mkdir.1p.html)
 - [`awk`](https://www.man7.org/linux/man-pages/man1/awk.1p.html)
