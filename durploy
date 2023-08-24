@@ -196,7 +196,7 @@ _durploy__p__desk_init() {
 	_durploy__p__send_hood "$_durploy_init_pier" "|new-desk %$_durploy_init_desk, =hard &"
 	_durploy__p__send_hood "$_durploy_init_pier" "|mount %$_durploy_init_desk"
 	# NOTE: We mark files in default desks to be as old as possible to ensure all
-	# files are overwritten by newer versions
+	# files are overwritten by deployment commands
 	touch -amt 197001010000 "$_durploy_init_pier/$_durploy_init_desk"/* "$_durploy_init_pier/$_durploy_init_desk"/*/*
 }
 _durploy__p__desk_cpdir() {
@@ -328,7 +328,9 @@ _durploy__p__glob_sync() {
 		_durploy__p__send_hood "$_durploy_globsync_pier" "|commit %durploy-globber"
 		_durploy__p__send_dojo "$_durploy_globsync_pier" "-garden!make-glob %durploy-globber /$_durploy_globsync_desk"
 		# TODO: Name the generated glob based on the name of the desk
-		# TODO: Edit the `desk.docket-0` file based on the glob hash
+		# TODO: Edit the `desk.docket-0` file in this desk based on the glob hash
+		#   sed -r "s/(glob-http\+\[).*(\])/\1\'http:\/\/127.0.0.1:8000\/$(ls | grep glob)\' \
+		#     $(ls | grep glob | sed -r 's/glob-(.*)\.glob/\1/g')\2/g" -i ../../quorum/desk.docket-0
 		_durploy__sync "$_durploy_globsync_pier/.urb/put/*.glob" "$DURPLOY_GLOB_DIR/"
 		rm "$_durploy_globsync_pier"/.urb/put/*.glob
 	fi
@@ -554,13 +556,16 @@ durploy() {
 	fi
 }
 
-# source: https://stackoverflow.com/a/37257634
-# if the functions above are sourced into an interactive interpreter, the user can
-# just call "durploy ship" or "durploy desk" with no further code needed.
+# source: https://stackoverflow.com/a/28776166
+sourced="false"
+if [ -n "$ZSH_VERSION" ]; then
+  case $ZSH_EVAL_CONTEXT in *:file) sourced="true" ;; esac
+elif [ -n "$BASH_VERSION" ]; then
+  (return 0 2>/dev/null) && sourced="true"
+else
+  case ${0##*/} in sh|-sh|dash|-dash) sourced="true" ;; esac
+fi
 
-# if invoked as a script rather than sourced, call function named on argv via the below;
-# note that this must be the first operation other than a function definition
-# for $_ to successfully distinguish between sourcing and invocation:
-# [ "$_" != "$0" ] && return
-
-durploy "$@"
+if [ "$sourced" = "false" ]; then
+	durploy "$@"
+fi

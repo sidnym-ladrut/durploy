@@ -19,10 +19,25 @@ curl -LO https://raw.githubusercontent.com/urbit/durploy/release/durploy
 ./durploy
 ```
 
-### Package Manager ###
+### Command Autocomplete ###
 
-`durploy` isn't currently available via standard package managers. Once it is,
-instructions on installing via these managers will be filled in here.
+#### Bash ####
+
+```bash
+mkdir -p ${XDG_DATA_HOME:-$HOME/.local/share}/bash-completion/completions/
+curl -O https://raw.githubusercontent.com/urbit/durploy/release/complete/durploy.bash \
+	> ${XDG_DATA_HOME:-$HOME/.local/share}/bash-completion/completions/
+```
+
+#### ZSH ####
+
+```bash
+# FIXME: Needed to add instructions on getting this to work with .zcompdump
+mkdir -p ${XDG_DATA_HOME:-$HOME/.local/share}/zsh-completion/
+curl -O https://raw.githubusercontent.com/urbit/durploy/release/complete/durploy.zsh \
+	> ${XDG_DATA_HOME:-$HOME/.local/share}/zsh-completion/
+echo "fpath=(${XDG_DATA_HOME:-$HOME/.local/share}/zsh-completion/ $fpath)" >> ~/.zprofile
+```
 
 ## Usage ##
 
@@ -91,6 +106,7 @@ This list is ordered roughly in descending order of expected availability:
 - [`sh`](https://www.man7.org/linux/man-pages/man1/sh.1p.html)
 - [`mkdir`](https://www.man7.org/linux/man-pages/man1/mkdir.1p.html)
 - [`awk`](https://www.man7.org/linux/man-pages/man1/awk.1p.html)
+- [`find`](https://www.man7.org/linux/man-pages/man1/find.1p.html)
 - [`sed`](https://www.man7.org/linux/man-pages/man1/sed.1p.html)
 - [`grep`](https://www.man7.org/linux/man-pages/man1/grep.1p.html)
 - [`printf`](https://www.man7.org/linux/man-pages/man1/printf.1p.html)
