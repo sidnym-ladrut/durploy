@@ -11,7 +11,7 @@
 
 ## Constants ##
 
-DURPLOY_VERSION="0.0.7"
+DURPLOY_VERSION="0.0.8"
 DURPLOY_HELP_FOOTER="
 Report bugs to: ~sidnym-ladrut
 durploy home page: <https://github.com/sidnym-ladrut/durploy>"
@@ -171,17 +171,22 @@ _durploy__bp__islive_ship() {
 }
 
 _durploy__bp__grab_ship_patp() {
-	if _durploy__bp__islive_ship "$@"; then
-		_durploy_grabpatp_live="true"
+	if [ -f "$2/.patp" ]; then
+		xargs echo < "$2/.patp"
 	else
-		_durploy_grabpatp_live="false"
+		if _durploy__bp__islive_ship "$@"; then
+			_durploy_grabpatp_live="true"
+		else
+			_durploy_grabpatp_live="false"
+		fi
+
+		[ "$_durploy_grabpatp_live" = "false" ] && _durploy__bp__start_ship "$@"
+		_durploy_grabpatp_spatp="$(_durploy__p__send_dojo "$2" "our" | sed 's/^~//')"
+		[ "$_durploy_grabpatp_live" = "false" ] && _durploy__bp__stop_ship "$@"
+
+		echo "$_durploy_grabpatp_spatp" > "$2/.patp"
+		echo "$_durploy_grabpatp_spatp"
 	fi
-
-	[ "$_durploy_grabpatp_live" = "false" ] && _durploy__bp__start_ship "$@" >/dev/null 2>&1
-	_durploy_grabpatp_spatp="$(_durploy__p__send_dojo "$2" "our" | sed 's/^~//')"
-	[ "$_durploy_grabpatp_live" = "false" ] && _durploy__bp__stop_ship "$@" >/dev/null 2>&1
-
-	echo "$_durploy_grabpatp_spatp"
 }
 
 _durploy__bp__check_pier_path() {
@@ -367,7 +372,13 @@ durploy__ship() {
 	_durploy__invalid_pargs_atleast 1 "$@" && _durploy__info "$DURPLOY_HELP_SHIP"
 
 	durploy_ship_base=$1; shift
-	[ -z "$durploy_ship_patp" ] && durploy_ship_patp="zod"
+	if [ -z "$durploy_ship_patp" ]; then
+		if [ ! -f "$DURPLOY_SHIP_DIR/$durploy_ship_base/.patp" ]; then
+			durploy_ship_patp="zod"
+		else
+			durploy_ship_patp="$(xargs echo < "$DURPLOY_SHIP_DIR/$durploy_ship_base/.patp")"
+		fi
+	fi
 	[ -z "$durploy_ship_nukelevel" ] && durploy_ship_nukelevel="0"
 
 	for _durploy_ship_script in "$@"; do
@@ -396,6 +407,7 @@ durploy__ship() {
 				cp -r "$durploy_ship_bkup" "$durploy_ship_pier"
 			# otherwise, attempt to create a new pier for the ship
 			elif "$durploy_ship_bin" -t -x -L -c "$durploy_ship_pier" -F "$durploy_ship_patp"; then
+				echo "$durploy_ship_patp" > "$durploy_ship_pier/.patp"
 				[ ! -e "$durploy_ship_bkup" ] && cp -r "$durploy_ship_pier" "$durploy_ship_bkup"
 			# if creating the new ship failed, then error out
 			else
