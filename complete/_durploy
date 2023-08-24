@@ -10,6 +10,8 @@
 # existing ships and not flag possibilities).
 # FIXME: Add support for the '-b/--binary' flag as a general command for all subcommands
 # (which must come before the subcommand is specified, e.g. `durploy -b ... ship ...`).
+# FIXME: Get rid of 'bug' argument placeholders in `durploy desk` (they're
+# needed for some reason to get each 1+ith positional argument to work)
 
 DURPLOY_CONFIG_FILE="${DURPLOY_CONFIG_FILE:-${XDG_CONFIG_HOME:-$HOME/.config}/durploy/durployrc}"
 [ -f "$DURPLOY_CONFIG_FILE" ] && source "$DURPLOY_CONFIG_FILE"
@@ -37,7 +39,8 @@ _durploy () {
 						1\:'Nuke just the pier; allow the ship to boot from the backup if it exists'
 						2\:'Nuke both pier and backup; start ship from a clean slate'
 					))" \
-					+ "(path)" ":path:($(_durploy_complete_ships))"
+					+ "(path)" ":path:($(_durploy_complete_ships))" \
+					+ "(scripts)" "*::script:_files -f"
 				;;
 			desk)
 				_arguments -A "-*" : \
@@ -50,7 +53,11 @@ _durploy () {
 						sur\:'only reset apps when their particular sur file changes'
 						never\:'never reset apps; only copy files and |commit'
 					))" \
-					+ "(path)" ":path:_files -/"
+					+ "(path)" ":path:($(_durploy_complete_ships))" \
+					+ "(bug1)" ":bug1:( )" \
+					+ "(dtag)" ":dtag:($(_durploy_complete_desks ${words[-2]}))" \
+					+ "(bug2)" ":bug2:( )" \
+					+ "(ddir)" ":ddir:_files -/"
 				;;
 			nuke)
 				_arguments -A "-*" : \
@@ -73,14 +80,18 @@ _durploy () {
 		_describe -t commands "durploy" subcommands
 		_arguments : \
 			+ "(version)" {-v,--version}"[Output version information]" \
-			+ "(help)" {-h,--help}"[Output help message]" \
-			# FIXME:
-			# + "(binary)" {-b,--binary}"[Set the Urbit binary to be used for deploying ships/desks]" \
+			+ "(help)" {-h,--help}"[Output help message]"
+			# + "(binary)" {-b,--binary}"[Set the Urbit binary to be used for deploying ships/desks]:bin path:_files -f"
 	fi
 }
 
 _durploy_complete_ships () {
 	find $DURPLOY_SHIP_DIR -name '.urb' -exec realpath --relative-to $DURPLOY_SHIP_DIR {} \; | sed 's|/.urb||g'
+}
+
+_durploy_complete_desks () {
+	[ -d $DURPLOY_SHIP_DIR/$1 ] && \
+		find $DURPLOY_SHIP_DIR/$1 -mindepth 1 -maxdepth 1 -type d -name "[!.]*" -exec realpath --relative-to $DURPLOY_SHIP_DIR/$1 {} \;
 }
 
 _durploy

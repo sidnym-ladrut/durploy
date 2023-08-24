@@ -32,11 +32,15 @@ curl -O https://raw.githubusercontent.com/urbit/durploy/release/complete/durploy
 #### ZSH ####
 
 ```bash
-# FIXME: Needed to add instructions on getting this to work with .zcompdump
 mkdir -p ${XDG_DATA_HOME:-$HOME/.local/share}/zsh-completion/
 curl -O https://raw.githubusercontent.com/urbit/durploy/release/complete/_durploy \
 	> ${XDG_DATA_HOME:-$HOME/.local/share}/zsh-completion/
-echo "fpath=(${XDG_DATA_HOME:-$HOME/.local/share}/zsh-completion/ $fpath)" >> ~/.zprofile
+# Be sure this runs before the 'autoload -U compinit; compinit' commands your `.zshrc`
+echo "fpath=(${XDG_DATA_HOME:-$HOME/.local/share}/zsh-completion/ $fpath)" >> $ZDOTDIR/.zshrc
+
+# Refresh the current session
+autoload -U compinit
+compinit
 ```
 
 ## Usage ##
@@ -50,13 +54,13 @@ durploy ship zod
 ### Synchronize a Desk to a Running Ship ###
 
 ```bash
-durploy desk zod my-desk /path/to/my-desk/*
+durploy desk zod my-desk /path/to/my-desk/
 ```
 
 ### Continually Deploy a Desk to a Running Ship ###
 
 ```bash
-durploy desk -w zod my-desk /path/to/my-desk/*
+durploy desk -w zod my-desk /path/to/my-desk/
 ```
 
 ### Remove a Development Ship ###

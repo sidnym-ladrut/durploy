@@ -8,7 +8,6 @@
 # TODO: Add test script to test the validity of a init script without actually
 # copying Urbit files.
 # TODO: In `durploy__ship`, terminate the ship if any errors occur during setup.
-# TODO: Add `durploy__list` command to list all existing ships.
 
 ## Constants ##
 
@@ -74,7 +73,7 @@ Flag arguments:
     sur: only reset apps when their particular sur file changes
     never (default): never reset apps; only copy files and '|commit'
 $DURPLOY_HELP_FOOTER"
-DURPLOY_HELP_NUKE="usage: durploy nuke [-l | --level <level>] <ship-path>
+DURPLOY_HELP_NUKE="usage: durploy nuke [-n | --nuke <level>] <ship-path>
 Remove previously deployed Urbit pier and its associated backup
 
 Positional arguments:
@@ -109,15 +108,30 @@ DURPLOY_URBIT_BIN="${DURPLOY_URBIT_BIN:-$(which urbit)}"
 
 _durploy__info() { echo "[INFO]: $1" && exit 1; }
 _durploy__error() { echo "[ERROR]: $1" && exit 1; }
-# NOTE: Weird `eval` required here to allow quoted glob statements to be imported
-# from user commands (e.g. a file spec like "/path/to/desk/full/*").
-_durploy__sync() { eval "cp -rupL $*"; }
 _durploy__remove() { echo "removing $1" && rm -rI "$1"; }
 _durploy__invalid_pargs_exact() { [ "$(($1+1))" != "$#" ]; }
 _durploy__invalid_pargs_atleast() { [ "$(($1+1))" -gt "$#" ]; }
 _durploy__invalid_git_repo() { [ "$(git -C "$1" rev-parse --show-toplevel)" != "$(readlink -f "$1")" ]; }
-_durploy__invalid_git_remote() {
-	[ "$(git -C "$1" remote -v | awk '/^origin.*\(fetch\)$/ {print $2;}')" != "$2" ]
+_durploy__invalid_git_remote() { [ "$(git -C "$1" remote -v | awk '/^origin.*\(fetch\)$/ {print $2;}')" != "$2" ]; }
+
+_durploy__sync() {
+	# NOTE: [2:] arguments are flags to be passed to the `cp` command
+	_durploy_sync_from=$1; shift
+	_durploy_sync_dest=$1; shift
+
+	# NOTE: Mimic `rsync` behavior by having a trailing / indicate "sync from->dest
+	# instead of copying from->dest/from"
+	[ -d "$_durploy_sync_from" ] && \
+		[ "$(echo "$_durploy_sync_from" | awk '{print substr($0,length,1)}')" = "/" ] && \
+		_durploy_sync_from="$_durploy_sync_from*"
+
+	# TODO: Remove
+	# [ -d "$_durploy_sync_from" ] && echo "from is a dir"
+	# [ "$(echo "$_durploy_sync_from" | awk '{print substr($0,length,1)}')" = "/" ] && echo "from ends in /"
+	# echo "$_durploy_sync_from -> $_durploy_sync_dest"
+
+	# NOTE: `eval` required here to allow quoted glob statements in arguments (e.g. "/path/*")
+	eval "cp -rupL $* $_durploy_sync_from $_durploy_sync_dest"
 }
 
 _durploy__b__invalid_patp() { echo "(scan \"$2\" fed:ag)" | "$1" eval 2>&1 | grep -q "bail: %exit"; }
@@ -270,7 +284,7 @@ _durploy__p__desk_sync() {
 	_durploy_desksync_rstrat=$4
 
 	_durploy_desksync_targ="$_durploy_desksync_pier/$_durploy_desksync_desk/"
-	_durploy_desksync_files=$(_durploy__sync -v "$_durploy_desksync_from" "$_durploy_desksync_targ" \
+	_durploy_desksync_files=$(_durploy__sync "$_durploy_desksync_from" "$_durploy_desksync_targ" -v \
 		| awk '/^'.+' -> '.+'$/ {gsub("\047","");print $3;}'
 	)
 
@@ -321,7 +335,7 @@ _durploy__p__glob_sync() {
 	_durploy_globsync_from=$3
 
 	_durploy_globsync_targ="$_durploy_globsync_pier/durploy-globber/$_durploy_globsync_desk/"
-	_durploy_globsync_files=$(_durploy__sync -v "$_durploy_globsync_from" "$_durploy_globsync_targ" \
+	_durploy_globsync_files=$(_durploy__sync "$_durploy_globsync_from" "$_durploy_globsync_targ" -v \
 		| awk '/^'.+' -> '.+'$/ {gsub("\047","");print $3;}'
 	)
 	if [ -n "$_durploy_globsync_files" ]; then
@@ -368,7 +382,7 @@ durploy__ship() {
 		_durploy__info "urbit ship '$durploy_ship_base' is already running"
 	else
 		[ "$durploy_ship_nukelevel" -gt "0" ] && \
-			durploy__nuke "$durploy_ship_bin" -l "$durploy_ship_nukelevel" "$durploy_ship_base"
+			durploy__nuke "$durploy_ship_bin" -n "$durploy_ship_nukelevel" "$durploy_ship_base"
 		_durploy__bp__check_pier_path "$durploy_ship_bin" "$durploy_ship_pier" "$durploy_ship_patp"
 		_durploy__bp__check_pier_path "$durploy_ship_bin" "$durploy_ship_bkup" "$durploy_ship_patp"
 
