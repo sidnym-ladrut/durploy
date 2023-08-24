@@ -81,9 +81,9 @@ Positional arguments:
   ship-path: The relative file path for the ship's pier (e.g. testing/zod)
 
 Flag arguments:
-  -l, --level: Run nuke with given severity level; one of:
-    2 (default): Nuke both the pier and the backup
-    1: Nuke just the pier (keep just the backup)
+  -n, --nuke: Run nuke with given severity level; one of:
+    2: Nuke both the pier and the backup
+    1 (default): Nuke just the pier (keep just the backup)
     0: Don't nuke (keep the pier and backup)
 $DURPLOY_HELP_FOOTER"
 DURPLOY_RESET_STRATS="always appsur sur never"
@@ -502,14 +502,14 @@ durploy__nuke() {
 	durploy_nuke_bin=$1; shift
 	while : ; do case $1 in
 		-h | --help) printf "%s\\n" "$DURPLOY_HELP_NUKE" && exit 1 ;;
-		-l | --level) durploy_nuke_level=$2 && shift 2 ;;
+		-n | --nuke) durploy_nuke_level=$2 && shift 2 ;;
 		-*) printf "invalid option: %s\\n" "$1" && exit 1 ;;
 		*) break ;;
 	esac done
 	_durploy__invalid_pargs_exact 1 "$@" && _durploy__info "$DURPLOY_HELP_NUKE"
 
 	durploy_nuke_base=$1; shift
-	[ -z "$durploy_nuke_level" ] && durploy_nuke_level="2"
+	[ -z "$durploy_nuke_level" ] && durploy_nuke_level="1"
 
 	durploy_nuke_pier="$DURPLOY_SHIP_DIR/$durploy_nuke_base"
 	[ "$durploy_nuke_level" -gt "1" ] && \
