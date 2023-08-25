@@ -48,6 +48,7 @@ Positional arguments:
   boot-script: The file path for the boot script (e.g. /path/to/init.sh)
 
 Flag arguments:
+  -h, --help: Show this help message
   -p, --patp: The @p (i.e. Urbit ID) of the ship to be deployed at the given path
     (default: zod)
   -n, --nuke: Run nuke with given severity prior to deployment; one of:
@@ -65,6 +66,7 @@ Positional arguments:
   file-path: The file path for the desk's source files (e.g. /path/to/my-desk)
 
 Flag arguments:
+  -h, --help: Show this help message
   -w, --watch: Monitor <desk-path> for changes and deploy continuously
   -g, --glob: Set the deployment to glob mode (<file-path> must point to a glob directory)
   -r, --reset: Strategy for resetting apps on a desk; one of:
@@ -80,6 +82,7 @@ Positional arguments:
   ship-path: The relative file path for the ship's pier (e.g. testing/zod)
 
 Flag arguments:
+  -h, --help: Show this help message
   -n, --nuke: Run nuke with given severity level; one of:
     2: Nuke both the pier and the backup
     1 (default): Nuke just the pier (keep just the backup)

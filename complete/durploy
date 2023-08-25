@@ -1,0 +1,78 @@
+# completion file for bash
+
+# inpired by: https://git.zx2c4.com/password-store/tree/src/completion/pass.bash-completion
+
+DURPLOY_CONFIG_FILE="${DURPLOY_CONFIG_FILE:-${XDG_CONFIG_HOME:-$HOME/.config}/durploy/durployrc}"
+[ -f "$DURPLOY_CONFIG_FILE" ] && source "$DURPLOY_CONFIG_FILE"
+DURPLOY_SHIP_DIR="${DURPLOY_SHIP_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/durploy/ships}"
+
+_durploy_complete_ships () {
+	local ships="$(find $DURPLOY_SHIP_DIR -name '.urb' -exec realpath --relative-to $DURPLOY_SHIP_DIR {} \; | sed 's|/.urb||g')"
+	COMPREPLY+=($(compgen -W "${ships}" -- ${cur}))
+}
+
+_durploy_complete_desks () {
+	[ -d $DURPLOY_SHIP_DIR/$1 ] && \
+		find $DURPLOY_SHIP_DIR/$1 -mindepth 1 -maxdepth 1 -type d -name "[!.]*" -exec realpath --relative-to $DURPLOY_SHIP_DIR/$1 {} \;
+}
+
+_durploy_complete_ship () {
+	local patps="zod nec bud wes sev per sut let ful pen syt dur wep ser wyl sun ryp syx dyr nup heb peg lup dep dys put lug hec ryt tyv syd nex lun mep lut sep pes del sul ped tem led tul met wen byn hex feb pyl dul het mev rut tyl wyd tep bes dex sef wyc bur der nep pur rys reb den nut sub pet rul syn reg tyd sup sem wyn rec meg net sec mul nym tev web sum mut nyx rex teb fus hep ben mus wyx sym sel ruc dec wex syr wet dyl myn mes det bet bel tux tug myr pel syp ter meb set dut deg tex sur fel tud nux rux ren wyt nub med lyt dus neb rum tyn seg lyx pun res red fun rev ref mec ted rus bex leb dux ryn num pyx ryg ryx fep tyr tus tyc leg nem fer mer ten lus nus syl tec mex pub rym tuc fyl lep deb ber mug hut tun byl sud pem dev lur def bus bep run mel pex dyt byt typ lev myl wed duc fur fex nul luc len ner lex rup ned lec ryd lyd fen wel nyd hus rel rud nes hes fet des ret dun ler nyr seb hul ryl lud rem lys fyn wer ryc sug nys nyl lyn dyn dem lux fed sed bec mun lyr tes mud nyt byr sen weg fyr mur tel rep teg pec nel nev fes"
+
+	local cur="${COMP_WORDS[COMP_CWORD]}"
+	local prev="${COMP_WORDS[COMP_CWORD-1]}"
+	case "${prev}" in
+		-h | --help) COMPREPLY+=() ;;
+		-n | --nuke) COMPREPLY+=($(compgen -W "0 1 2" -- ${cur})) ;;
+		-p | --patp) COMPREPLY+=($(compgen -W "$patps" -- ${cur})) ;;
+		ship | -* | [0-2] | [a-z][a-z][a-z])
+			# TODO: Need to add scripts as second optional argument
+			COMPREPLY+=($(compgen -W "-h --help -p --patp -n --nuke" -- ${cur}))
+			_durploy_complete_ships
+			;;
+	esac
+}
+
+_durploy_complete_desk () {
+	local cur="${COMP_WORDS[COMP_CWORD]}"
+	local prev="${COMP_WORDS[COMP_CWORD-1]}"
+	case "${prev}" in
+		-h | --help) COMPREPLY+=() ;;
+		-r | --reset) COMPREPLY+=($(compgen -W "always appsur sur never" -- ${cur})) ;;
+		desk | -* | always | appsur | sur | never)
+			COMPREPLY+=($(compgen -W "-h --help -w --watch -g --glob -r --reset" -- ${cur}))
+			# TODO: Need to add (required desk name) (required desk path) required args
+			_durploy_complete_ships
+			;;
+	esac
+}
+
+_durploy_complete_nuke () {
+	local cur="${COMP_WORDS[COMP_CWORD]}"
+	local prev="${COMP_WORDS[COMP_CWORD-1]}"
+	case "${prev}" in
+		-h | --help) COMPREPLY+=() ;;
+		-n | --nuke) COMPREPLY+=($(compgen -W "0 1 2" -- ${cur})) ;;
+		nuke | -* | [0-2])
+			COMPREPLY+=($(compgen -W "-h --help -n --nuke" -- ${cur}))
+			_durploy_complete_ships
+			;;
+	esac
+}
+
+_durploy () {
+	COMPREPLY=()
+	local cur="${COMP_WORDS[COMP_CWORD]}"
+	local commands="ship desk nuke"
+	if [[ $COMP_CWORD -gt 1 ]]; then
+		case "${COMP_WORDS[1]}" in
+			ship) _durploy_complete_ship ;;
+			desk) _durploy_complete_desk ;;
+			nuke) _durploy_complete_nuke ;;
+		esac
+	else
+		COMPREPLY+=($(compgen -W "-h --help -v --version ${commands}" -- ${cur}))
+	fi
+}
+
+complete -F _durploy durploy

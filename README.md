@@ -25,8 +25,10 @@ curl -LO https://raw.githubusercontent.com/urbit/durploy/release/durploy
 
 ```bash
 mkdir -p ${XDG_DATA_HOME:-$HOME/.local/share}/bash-completion/completions/
-curl -O https://raw.githubusercontent.com/urbit/durploy/release/complete/durploy.bash \
+curl -O https://raw.githubusercontent.com/urbit/durploy/release/complete/durploy \
 	> ${XDG_DATA_HOME:-$HOME/.local/share}/bash-completion/completions/
+# If you don't have bash autocomplete configured, run the following:
+echo "source ${XDG_DATA_HOME:-$HOME/.local/share}/bash-completion/completions/durploy" >> ~/.bashrc
 ```
 
 #### ZSH ####
@@ -35,10 +37,10 @@ curl -O https://raw.githubusercontent.com/urbit/durploy/release/complete/durploy
 mkdir -p ${XDG_DATA_HOME:-$HOME/.local/share}/zsh-completion/
 curl -O https://raw.githubusercontent.com/urbit/durploy/release/complete/_durploy \
 	> ${XDG_DATA_HOME:-$HOME/.local/share}/zsh-completion/
-# Be sure this runs before the 'autoload -U compinit; compinit' commands your `.zshrc`
+# Be sure this runs before the 'autoload -U compinit; compinit' commands in your `.zshrc`
 echo "fpath=(${XDG_DATA_HOME:-$HOME/.local/share}/zsh-completion/ $fpath)" >> $ZDOTDIR/.zshrc
 
-# Refresh the current session
+# Refresh the autocomplete commands in the current session
 autoload -U compinit
 compinit
 ```
