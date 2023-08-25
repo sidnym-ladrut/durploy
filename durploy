@@ -11,7 +11,7 @@
 
 ## Constants ##
 
-DURPLOY_VERSION="0.0.8"
+DURPLOY_VERSION="0.0.9"
 DURPLOY_HELP_FOOTER="
 Report bugs to: ~sidnym-ladrut
 durploy home page: <https://github.com/sidnym-ladrut/durploy>"

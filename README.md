@@ -15,17 +15,18 @@ issues with missing commands.
 ### Quick and Easy ###
 
 ```bash
-curl -LO https://raw.githubusercontent.com/urbit/durploy/release/durploy
+curl -LO https://raw.githubusercontent.com/sidnym-ladrut/durploy/release/durploy
+chmod u+x ./durploy
 ./durploy
 ```
 
-### Command Autocomplete ###
+### Adding Autocomplete ###
 
 #### Bash ####
 
 ```bash
 mkdir -p ${XDG_DATA_HOME:-$HOME/.local/share}/bash-completion/completions/
-curl -O https://raw.githubusercontent.com/urbit/durploy/release/complete/durploy \
+curl -O https://raw.githubusercontent.com/sidnym-ladrut/durploy/release/complete/durploy \
 	> ${XDG_DATA_HOME:-$HOME/.local/share}/bash-completion/completions/
 # If you don't have bash autocomplete configured, run the following:
 echo "source ${XDG_DATA_HOME:-$HOME/.local/share}/bash-completion/completions/durploy" >> ~/.bashrc
@@ -35,7 +36,7 @@ echo "source ${XDG_DATA_HOME:-$HOME/.local/share}/bash-completion/completions/du
 
 ```bash
 mkdir -p ${XDG_DATA_HOME:-$HOME/.local/share}/zsh-completion/
-curl -O https://raw.githubusercontent.com/urbit/durploy/release/complete/_durploy \
+curl -O https://raw.githubusercontent.com/sidnym-ladrut/durploy/release/complete/_durploy \
 	> ${XDG_DATA_HOME:-$HOME/.local/share}/zsh-completion/
 # Be sure this runs before the 'autoload -U compinit; compinit' commands in your `.zshrc`
 echo "fpath=(${XDG_DATA_HOME:-$HOME/.local/share}/zsh-completion/ $fpath)" >> $ZDOTDIR/.zshrc
@@ -52,6 +53,14 @@ compinit
 ```bash
 durploy ship zod
 ```
+
+### Bootstrap a Development Ship w/ Init Scripts ###
+
+```bash
+durploy ship zod /path/to/init1.sh /path/to/init2.sh
+```
+
+(See the `examples` directory for samples.)
 
 ### Synchronize a Desk to a Running Ship ###
 
