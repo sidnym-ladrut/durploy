@@ -213,13 +213,24 @@ _durploy__bp__check_pier_path() {
 }
 
 _durploy__p__desk_init() {
-	_durploy_init_pier=$1
-	_durploy_init_desk=$2
-	_durploy__p__send_hood "$_durploy_init_pier" "|new-desk %$_durploy_init_desk, =hard &"
-	_durploy__p__send_hood "$_durploy_init_pier" "|mount %$_durploy_init_desk"
+	_durploy_dinit_pier=$1
+	_durploy_dinit_desk=$2
+	_durploy__p__send_hood "$_durploy_dinit_pier" "|new-desk %$_durploy_dinit_desk, =hard &"
+	_durploy__p__desk_mount "$_durploy_dinit_pier" "$_durploy_dinit_desk"
+}
+_durploy__p__desk_mount() {
+	_durploy_dmount_pier=$1
+	_durploy_dmount_desk=$2
+	_durploy__p__send_hood "$_durploy_dmount_pier" "|mount %$_durploy_dmount_desk"
 	# NOTE: We mark files in default desks to be as old as possible to ensure all
 	# files are overwritten by deployment commands
-	touch -amt 197001010000 "$_durploy_init_pier/$_durploy_init_desk"/* "$_durploy_init_pier/$_durploy_init_desk"/*/*
+	touch -amt 197001010000 "$_durploy_dmount_pier/$_durploy_dmount_desk"/* "$_durploy_dmount_pier/$_durploy_dmount_desk"/*/*
+}
+_durploy__p__desk_inst() {
+	_durploy_dinst_pier=$1
+	_durploy_dinst_desk=$2
+	_durploy__p__send_hood "$_durploy_dinst_pier" "|commit %$_durploy_dinst_desk"
+	_durploy__p__send_hood "$_durploy_dinst_pier" "|install our %$_durploy_dinst_desk"
 }
 _durploy__p__desk_cpdir() {
 	_durploy_copydir_pier=$1
@@ -258,12 +269,6 @@ _durploy__p__desk_cpgit() {
 		_durploy_copygit_destpath="$_durploy_copygit_pier/$_durploy_copygit_desk/$_durploy_copygit_dest"
 		_durploy__sync "$_durploy_copygit_frompath" "$_durploy_copygit_destpath"
 	done
-}
-_durploy__p__desk_inst() {
-	_durploy_inst_pier=$1
-	_durploy_inst_desk=$2
-	_durploy__p__send_hood "$_durploy_inst_pier" "|commit %$_durploy_inst_desk"
-	_durploy__p__send_hood "$_durploy_inst_pier" "|install our %$_durploy_inst_desk"
 }
 
 _durploy__p__desk_install() {
