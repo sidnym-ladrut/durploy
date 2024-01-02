@@ -286,7 +286,7 @@ _durploy_p__globber_install() {
 	_durploy__p__desk_init "$_durploy_glbrinst_pier" "$_durploy_glbrinst_desk"
 	_durploy__p__desk_cpgit "$_durploy_glbrinst_pier" "$_durploy_glbrinst_desk" \
 		git@github.com:urbit/urbit.git "" \
-		"pkg/arvo/mar/{hoon*,js*,mime*,noun*,ship*,txt*,png*,woff2*,html*,css*,svg*} mar/"
+		"pkg/arvo/mar/{hoon*,ico*,js*,mime*,noun*,ship*,txt*,png*,woff2*,html*,css*,svg*} mar/"
 	_durploy__p__send_hood "$_durploy_glbrinst_pier" "|commit %$_durploy_glbrinst_desk"
 }
 
@@ -353,7 +353,7 @@ _durploy__p__glob_sync() {
 	)
 	if [ -n "$_durploy_globsync_files" ]; then
 		_durploy__p__send_hood "$_durploy_globsync_pier" "|commit %durploy-globber"
-		_durploy__p__send_dojo "$_durploy_globsync_pier" "-garden!make-glob %durploy-globber /$_durploy_globsync_desk"
+		_durploy__p__send_dojo "$_durploy_globsync_pier" "-landscape!make-glob %durploy-globber /$_durploy_globsync_desk"
 		# TODO: Name the generated glob based on the name of the desk
 		# TODO: Edit the `desk.docket-0` file in this desk based on the glob hash
 		#   sed -r "s/(glob-http\+\[).*(\])/\1\'http:\/\/127.0.0.1:8000\/$(ls | grep glob)\' \
