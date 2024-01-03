@@ -51,7 +51,11 @@ compinit
 ### Create/Run a Development Ship ###
 
 ```bash
+# fake ship
 durploy ship zod
+
+# real ship (comet)
+durploy ship -p com com
 ```
 
 ### Bootstrap a Development Ship w/ Init Scripts ###

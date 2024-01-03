@@ -11,7 +11,7 @@
 
 ## Constants ##
 
-DURPLOY_VERSION="0.0.9"
+DURPLOY_VERSION="0.0.10"
 DURPLOY_HELP_FOOTER="
 Report bugs to: ~sidnym-ladrut
 durploy home page: <https://github.com/sidnym-ladrut/durploy>"
@@ -41,7 +41,7 @@ Config options (via environment variables or sh config file):
 $DURPLOY_HELP_FOOTER"
 DURPLOY_HELP_SHIP="usage: durploy ship [-p | --patp <ship-patp>] [-n | --nuke <level>]
                       <ship-path> [<boot-script> ...]
-Generate and run Urbit ships (w/ optional boot script(s))
+Generate and run an Urbit ship (w/ optional boot script(s))
 
 Positional arguments:
   ship-path: The relative file path for the ship's pier (e.g. testing/zod)
@@ -49,8 +49,9 @@ Positional arguments:
 
 Flag arguments:
   -h, --help: Show this help message
-  -p, --patp: The @p (i.e. Urbit ID) of the ship to be deployed at the given path
-    (default: zod)
+  -p, --patp: The @p (i.e. Urbit ID) of the ship to be deployed; one of:
+    zod (default)/nec/bud/etc.: The @p of the fake ship to be booted
+    com: A special case identifier indicating that a real comet should be booted
   -n, --nuke: Run nuke with given severity prior to deployment; one of:
     2: Nuke both pier and backup; start ship from a clean slate
     1: Nuke just the pier; allow the ship to boot from the backup if it exists
@@ -109,6 +110,17 @@ DURPLOY_URBIT_BIN="${DURPLOY_URBIT_BIN:-$(which urbit)}"
 
 ## Helper Functions ##
 
+# NOTE: The helper functions in this script use naming conventions to help with
+# identification and argument auto-population for ship initialization scripts.
+#
+# A function containing a `__\w+__` substring takes one common argument for each
+# letter between the underscores (in the order that the letters appear) with the
+# following correspondence:
+#
+# - b: path to urbit binary (e.g. /path/to/urbit)
+# - p: path to ship pier (e.g. /path/to/zod)
+# - i: urbit id for the ship (e.g. zod)
+
 _durploy__info() { echo "[INFO]: $1" && exit 1; }
 _durploy__error() { echo "[ERROR]: $1" && exit 1; }
 _durploy__remove() { echo "removing $1" && rm -rI "$1"; }
@@ -137,7 +149,7 @@ _durploy__sync() {
 	eval "cp -rupL $* $_durploy_sync_from $_durploy_sync_dest"
 }
 
-_durploy__b__invalid_patp() { echo "(scan \"$2\" fed:ag)" | "$1" eval 2>&1 | grep -q "bail: %exit"; }
+_durploy__b__invalid_patp() { echo "(scan \"$2\" ;~(pose fed:ag (jest 'com')))" | "$1" eval 2>&1 | grep -q "bail: %exit"; }
 _durploy__b__invalid_desk() { echo "(scan \"$2\" sym)" | "$1" eval 2>&1 | grep -q "bail: %exit"; }
 _durploy__b__hash_config() { sha256sum -b "$1" | awk '{print $1;}'; }
 
@@ -161,6 +173,13 @@ _durploy__p__send_dojo() {
 }
 _durploy__p__send_hood() {
 	_durploy__p__send_dojo "$1" "$(echo "$2" | sed 's/^|/+hood\//')" "hood"
+}
+
+_durploy__bp__make_ship() {
+	"$1" -t -x "$(if [ "$3" = "com" ]; then echo "-L"; else echo "-F$3"; fi)" -c "$2" >/dev/null 2>&1
+}
+_durploy__bp__test_ship() {
+	"$1" -t -x -L "$2" >/dev/null 2>&1
 }
 
 _durploy__bp__start_ship() {
@@ -199,16 +218,54 @@ _durploy__bp__check_pier_path() {
 
 	_durploy__b__invalid_patp "$_durploy_checkpier_bin" "$_durploy_checkpier_patp" \
 		&& _durploy__error "invalid ship name '$_durploy_checkpier_patp'"
-	if [ ! -e "$_durploy_checkpier_path" ]; then
+
+	if [ ! -e "$_durploy_checkpier_path/.urb" ]; then
 		mkdir -p "$(dirname "$_durploy_checkpier_path")" \
 			|| _durploy__error "couldn't create directory at path '$_durploy_checkpier_path'"
-	elif [ ! -d "$_durploy_checkpier_path" ]; then
+	elif [ ! -d "$_durploy_checkpier_path/.urb" ]; then
 		_durploy__error "invalid artifact exists at path '$_durploy_checkpier_path'"
 	else
 		_durploy_checkpier_rid="$(_durploy__bp__grab_ship_patp "$_durploy_checkpier_bin" "$_durploy_checkpier_path")"
 		if [ "$_durploy_checkpier_rid" != "$_durploy_checkpier_patp" ]; then
 			_durploy__error "bad @p '$_durploy_checkpier_patp' for '$_durploy_checkpier_path' (pier @p: '$_durploy_checkpier_rid')"
 		fi
+	fi
+}
+
+_durploy__bp__init_ship() {
+	# NOTE: [2:] arguments are all the init scripts
+	_durploy_initship_bin=$1; shift
+	_durploy_initship_pier=$1; shift
+
+	if [ "0" != "$#" ]; then
+		_durploy__bp__start_ship "$_durploy_initship_bin" "$_durploy_initship_pier"
+
+		# create aliases for common commands to allow shell scripts to be more terse
+		# shellcheck disable=SC2013
+		for _durploy_initship_func in $(awk '/^_durploy__.+__/ {print substr($1, 1, length($1)-2);}' < "$0"); do
+			_durploy_initship_alias=$(echo "$_durploy_initship_func" | sed -re 's/_durploy__.+__(.*)/\1/')
+			_durploy_initship_idargs=$(echo "$_durploy_initship_func" | sed -re 's/_durploy__(.+)__.*/\1/')
+			_durploy_initship_rlargs=""
+			for _durploy_initship_arg in $(echo "$_durploy_initship_idargs" | sed -re 's/(.)/\1\n/g'); do
+				if [ "$_durploy_initship_arg" = "b" ]; then
+					_durploy_initship_rlargs="$_durploy_initship_rlargs $_durploy_initship_bin"
+				elif [ "$_durploy_initship_arg" = "p" ]; then
+					_durploy_initship_rlargs="$_durploy_initship_rlargs $_durploy_initship_pier"
+				fi
+			done
+			eval "function $_durploy_initship_alias() { $_durploy_initship_func $_durploy_initship_rlargs \"\$@\"; }"
+		done
+		for _durploy_initship_script in "$@"; do
+			# shellcheck disable=SC1090
+			. "$(readlink -f "$_durploy_initship_script")"
+		done
+		# shellcheck disable=SC2013
+		for _durploy_initship_func in $(awk '/^_durploy__.+__/ {print substr($1, 1, length($1)-2);}' < "$0"); do
+			_durploy_initship_alias=$(echo "$_durploy_initship_func" | sed -re 's/_durploy__.+__(.*)/\1/')
+			unset -f "$_durploy_initship_alias"
+		done
+
+		_durploy__bp__stop_ship "$_durploy_initship_bin" "$_durploy_initship_pier"
 	fi
 }
 
@@ -388,6 +445,11 @@ durploy__ship() {
 		fi
 	fi
 	[ -z "$durploy_ship_nukelevel" ] && durploy_ship_nukelevel="0"
+	if [ "$durploy_ship_patp" = "com" ]; then
+		durploy_ship_iscomet="true"
+	else
+		durploy_ship_iscomet="false"
+	fi
 
 	for _durploy_ship_script in "$@"; do
 		_durploy_ship_scriptpath="$(readlink -f "$_durploy_ship_script")"
@@ -395,7 +457,13 @@ durploy__ship() {
 			_durploy__error "provided init script either doesn't exist or can't be run: '$_durploy_ship_script'"
 	done
 	durploy_ship_pier="$DURPLOY_SHIP_DIR/$durploy_ship_base"
-	durploy_ship_bkup="$DURPLOY_BACKUP_DIR/$durploy_ship_patp-$(_durploy__b__hash_config "$durploy_ship_bin")"
+	# NOTE: We make the backup path the same as the pier for comets/real ships
+	# as an elegant way to skip all related copying/restoring behavior.
+	if [ "$durploy_ship_iscomet" = "true" ]; then
+		durploy_ship_bkup="$durploy_ship_pier"
+	else
+		durploy_ship_bkup="$DURPLOY_BACKUP_DIR/$durploy_ship_patp-$(_durploy__b__hash_config "$durploy_ship_bin")"
+	fi
 
 	if _durploy__bp__islive_ship "$durploy_ship_bin" "$durploy_ship_pier"; then
 		_durploy__info "urbit ship '$durploy_ship_base' is already running"
@@ -407,62 +475,32 @@ durploy__ship() {
 
 		# TODO: Allow users to discard bad backups when they're detected
 
-		# if the pier doesn't exist yet, try to create it
 		if [ ! -e "$durploy_ship_pier" ]; then
-			durploy_ship_runcmds="true"
+			durploy_ship_doinit="true"
 			# if the backup exists and is valid, then copy it to the new pier path
-			if [ -d "$durploy_ship_bkup" ] && "$durploy_ship_bin" -t -x -L "$durploy_ship_bkup"; then
+			if [ -d "$durploy_ship_bkup" ] && _durploy__bp__test_ship "$durploy_ship_bin" "$durploy_ship_bkup"; then
 				cp -r "$durploy_ship_bkup" "$durploy_ship_pier"
 			# otherwise, attempt to create a new pier for the ship
-			elif "$durploy_ship_bin" -t -x -L -c "$durploy_ship_pier" -F "$durploy_ship_patp"; then
+			elif _durploy__bp__make_ship "$durploy_ship_bin" "$durploy_ship_pier" "$durploy_ship_patp"; then
 				echo "$durploy_ship_patp" > "$durploy_ship_pier/.patp"
 				[ ! -e "$durploy_ship_bkup" ] && cp -r "$durploy_ship_pier" "$durploy_ship_bkup"
 			# if creating the new ship failed, then error out
 			else
 				_durploy__error "couldn't create ship '$durploy_ship_patp' at '$durploy_ship_pier'"
 			fi
-		# else, attempt to boot the urbit and immediately exit
 		else
-			durploy_ship_runcmds="false"
-			if "$durploy_ship_bin" -t -x -L "$durploy_ship_pier"; then
+			durploy_ship_doinit="false"
+			if _durploy__bp__test_ship "$durploy_ship_bin" "$durploy_ship_pier"; then
 				[ ! -e "$durploy_ship_bkup" ] && cp -r "$durploy_ship_pier" "$durploy_ship_bkup"
 			else
 				_durploy__error "couldn't revive ship '$durploy_ship_patp' at '$durploy_ship_pier'"
 			fi
 		fi
 
-		if [ "$durploy_ship_runcmds" = "true" ] && [ "0" != "$#" ]; then
-			_durploy__bp__start_ship "$durploy_ship_bin" "$durploy_ship_pier"
-
-			# create aliases for common commands to allow shell scripts to be more terse
-			# shellcheck disable=SC2013
-			for _durploy_ship_func in $(awk '/^_durploy__.+__/ {print substr($1, 1, length($1)-2);}' < "$0"); do
-				_durploy_ship_alias=$(echo "$_durploy_ship_func" | sed -re 's/_durploy__.+__(.*)/\1/')
-				_durploy_ship_idargs=$(echo "$_durploy_ship_func" | sed -re 's/_durploy__(.+)__.*/\1/')
-				_durploy_ship_rlargs=""
-				for _durploy_ship_arg in $(echo "$_durploy_ship_idargs" | sed -re 's/(.)/\1\n/g'); do
-					if [ "$_durploy_ship_arg" = "b" ]; then
-						_durploy_ship_rlargs="$_durploy_ship_rlargs $durploy_ship_bin"
-					elif [ "$_durploy_ship_arg" = "p" ]; then
-						_durploy_ship_rlargs="$_durploy_ship_rlargs $durploy_ship_pier"
-					fi
-				done
-				eval "function $_durploy_ship_alias() { $_durploy_ship_func $_durploy_ship_rlargs \"\$@\"; }"
-			done
-			for _durploy_ship_script in "$@"; do
-				# shellcheck disable=SC1090
-				. "$(readlink -f "$_durploy_ship_script")"
-			done
-			# shellcheck disable=SC2013
-			for _durploy_ship_func in $(awk '/^_durploy__.+__/ {print substr($1, 1, length($1)-2);}' < "$0"); do
-				_durploy_ship_alias=$(echo "$_durploy_ship_func" | sed -re 's/_durploy__.+__(.*)/\1/')
-				unset -f "$_durploy_ship_alias"
-			done
-
-			_durploy__bp__stop_ship "$durploy_ship_bin" "$durploy_ship_pier"
+		if [ "$durploy_ship_doinit" = "true" ]; then
+			_durploy__bp__init_ship "$durploy_ship_bin" "$durploy_ship_pier" "$@"
 		fi
-
-		"$durploy_ship_bin" -L "$durploy_ship_pier"
+		"$durploy_ship_bin" "$durploy_ship_pier"
 	fi
 }
 
