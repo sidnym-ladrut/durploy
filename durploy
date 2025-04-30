@@ -11,7 +11,7 @@
 
 ## Constants ##
 
-DURPLOY_VERSION="0.0.10"
+DURPLOY_VERSION="0.0.11"
 DURPLOY_HELP_FOOTER="
 Report bugs to: ~sidnym-ladrut
 durploy home page: <https://github.com/sidnym-ladrut/durploy>"
@@ -343,7 +343,7 @@ _durploy_p__globber_install() {
 	_durploy__p__desk_init "$_durploy_glbrinst_pier" "$_durploy_glbrinst_desk"
 	_durploy__p__desk_cpgit "$_durploy_glbrinst_pier" "$_durploy_glbrinst_desk" \
 		git@github.com:urbit/urbit.git "" \
-		"pkg/arvo/mar/{hoon*,ico*,js*,mime*,noun*,ship*,txt*,png*,woff2*,html*,css*,svg*} mar/"
+		"pkg/arvo/mar/{hoon*,ico*,js*,mime*,noun*,ship*,map*,txt*,png*,woff2*,html*,css*,svg*} mar/"
 	_durploy__p__send_hood "$_durploy_glbrinst_pier" "|commit %$_durploy_glbrinst_desk"
 }
 
@@ -404,13 +404,18 @@ _durploy__p__glob_sync() {
 	_durploy_globsync_desk=$2
 	_durploy_globsync_from=$3
 
-	_durploy_globsync_targ="$_durploy_globsync_pier/durploy-globber/$_durploy_globsync_desk/"
-	_durploy_globsync_files=$(_durploy__sync "$_durploy_globsync_from" "$_durploy_globsync_targ" -v \
+	_durploy_globsync_targ="$_durploy_globsync_pier/durploy-globber/$_durploy_globsync_desk"
+	_durploy_globsync_files=$(_durploy__sync "$_durploy_globsync_from" "$_durploy_globsync_targ/" -v \
 		| awk '/^'.+' -> '.+'$/ {gsub("\047","");print $3;}'
 	)
 	if [ -n "$_durploy_globsync_files" ]; then
+		# NOTE: We use a salt/new directory because syncing to the old
+		# directory causes problems for the globber
+		_durploy_globsync_salt="$(tr -dc a-z0-9 </dev/urandom | head -c 12)"
+		_durploy__sync "$_durploy_globsync_from" "$_durploy_globsync_targ-$_durploy_globsync_salt/"
 		_durploy__p__send_hood "$_durploy_globsync_pier" "|commit %durploy-globber"
-		_durploy__p__send_dojo "$_durploy_globsync_pier" "-landscape!make-glob %durploy-globber /$_durploy_globsync_desk"
+		_durploy__p__send_dojo "$_durploy_globsync_pier" \
+			"-landscape!make-glob %durploy-globber /$_durploy_globsync_desk-$_durploy_globsync_salt"
 		# TODO: Name the generated glob based on the name of the desk
 		# TODO: Edit the `desk.docket-0` file in this desk based on the glob hash
 		#   sed -r "s/(glob-http\+\[).*(\])/\1\'http:\/\/127.0.0.1:8000\/$(ls | grep glob)\' \
@@ -542,11 +547,8 @@ durploy__desk() {
 			_durploy__p__desk_install "$durploy_desk_pier" "$durploy_desk_name" "$durploy_desk_codepath"
 		fi
 	else
-		if [ ! -d "$durploy_desk_pier/$durploy_desk_name" ]; then
-			_durploy__error "cannot install glob; desk '$durploy_desk_name' doesn't exist for pier '$durploy_desk_pier'"
-		fi
 		if [ ! -d "$durploy_desk_pier/durploy-globber" ]; then
-			_durploy_p__globber_install "$durploy_desk_pier" "$durploy_desk_name"
+			_durploy_p__globber_install "$durploy_desk_pier"
 		fi
 	fi
 
